@@ -4,6 +4,8 @@
 
 This is a local, single-user tool. The HTTP service is restricted to loopback and checks Host/Origin. It has no public-deployment authentication. Do not expose its port through a proxy or tunnel without designing appropriate access controls.
 
+`python app.py` optionally reads the project `.env`. This is a local plaintext secret file, ignored by Git, and must be protected and excluded from shared folders/backups. Environment values win; the loader accepts only named project settings and does not execute or expand them. Native DeepSeek search uses a fixed official HTTPS endpoint. The local AI key is inherited only by an endpoint sharing its configured origin (scheme, host, port). Only an explicitly selected search key, `DEEPSEEK_API_KEY`, or an AI key whose destination is the official HTTPS origin can authenticate it.
+
 Public-source retrieval rejects private/metadata addresses, validates redirects, and pins DNS resolutions. Website credentials are attached only to the authorized HTTPS origin and removed on cross-origin redirects. They stay in the active session and must never appear in report JSON, exports, browser storage, provider prompts, or search queries. Account-protected text may still be sent to the AI provider selected by the user. Review that content before use.
 
 Never place real keys in `.env.example`, tests, screenshots, issues, or commits. `.env` and `runtime/` are ignored. A report itself may contain private retrieved material: inspect it before sharing. Imported reports are untrusted; import validates structure and references but does not independently reverify their truth.
@@ -16,6 +18,8 @@ Report vulnerabilities through GitHub's **private vulnerability reporting** for 
 
 本工具面向本机单用户。HTTP 服务限制回环访问并检查 Host/Origin，没有公开部署认证。不要在未设计访问控制的情况下用代理或隧道暴露端口。
 
+`python app.py` 可读取项目 `.env`。这是已被 Git 忽略的本机明文秘密文件，请保护权限，不要放入共享文件或公开备份。进程变量优先，加载器只接受规定字段，不执行或展开内容。DeepSeek 原生搜索固定使用官方 HTTPS 接口，本机 AI 密钥只向与配置相同的 origin（协议、主机、端口）继承。搜索仅接受明确选择的搜索密钥、`DEEPSEEK_API_KEY` 或目标为官方 HTTPS 来源的 AI 密钥。
+
 公开资料抓取拒绝私网/元数据地址、检查重定向并固定 DNS 结果。网站凭据只附给授权 HTTPS 来源，跨来源重定向时移除；只在当前会话存在，不得进入 JSON、导出、浏览器存储、模型提示或搜索查询。账户正文可能发送给用户所选 AI，请先评估内容。
 
 真实密钥不要放入模板、测试、截图、issue 或提交。`.env`、`runtime/` 已忽略。报告可能包含私有正文，分享前检查。导入会验证结构和引用，但不会独立重新证明真实性。
@@ -27,6 +31,8 @@ Report vulnerabilities through GitHub's **private vulnerability reporting** for 
 ## 日本語
 
 本ツールはローカルの単一利用者向けです。HTTP はループバックと Host/Origin 検査に限定し、公開配置用認証はありません。適切なアクセス制御を設計せず、プロキシやトンネルで公開しないでください。
+
+`python app.py` は任意のプロジェクト `.env` を読み込みます。Git から除外したローカル平文の秘密ファイルとして保護し、共有フォルダーや公開バックアップに含めないでください。既存環境を優先し、規定項目のみ読み込み、実行・変数展開はしません。DeepSeek 検索は固定した公式 HTTPS 接続先に、ローカル AI キーは設定と同一 origin（プロトコル・ホスト・ポート）にのみ引き継がれます。検索には明示した検索キー、`DEEPSEEK_API_KEY`、または公式 HTTPS 宛ての AI キーのみを使用します。
 
 公開資料取得は内部・メタデータアドレスを拒否し、リダイレクトを検査して DNS 結果を固定します。サイト認証情報は許可した HTTPS オリジンだけに付与し、別オリジンへの転送では除去します。セッション中だけ保持し、JSON、書出し、ストレージ、モデル、検索に含めません。認証済み本文は選択した AI に送られる場合があるため、内容を確認してください。
 

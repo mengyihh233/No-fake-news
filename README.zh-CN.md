@@ -23,7 +23,7 @@
 | 访问授权网站 | 会话内提供精确 HTTPS 来源的 HTTP Basic 账号密码、Cookie 或 Bearer Token。 |
 | 便携报告 | 导入/导出 JSON；导出可内嵌本机截图的独立 HTML。 |
 | 完整三语 | 简体中文 / English / 日本語覆盖界面、新生成叙述、导出标签、命令提示、Skill 及文档；原始摘录保持原语言。 |
-| 自接模型 | OpenAI 兼容 Chat Completions，加独立 Tavily 或 Brave 搜索账户。 |
+| 自接模型 | OpenAI 兼容 Chat Completions；DeepSeek 原生搜索可复用官方密钥，也可选 Tavily / Brave。 |
 
 布局、证据图与设计参考见[设计说明](docs/DESIGN.md)。
 
@@ -54,11 +54,15 @@ python app.py
 
 ## 接入服务及资料来源
 
-打开“接口设置”，填写 AI Base URL、实际模型 ID、AI 密钥和独立的 Tavily/Brave 搜索密钥。`https://api.openai.com/v1` 等根地址会追加 `/chat/completions`，也接受完整接口地址。显式本机兼容服务可以不填 AI 密钥。
+打开“接口设置”，填写 AI Base URL、实际模型 ID、AI 密钥并选择搜索服务。DeepSeek 原生搜索可复用官方 DeepSeek AI 密钥；Tavily/Brave 需要各自密钥。`https://api.openai.com/v1` 等根地址会追加 `/chat/completions`，也接受完整接口地址。显式本机兼容服务可以不填 AI 密钥。
 
 只支持 **Chat Completions 文本协议**，模型须按要求返回 JSON。Anthropic 原生 Messages、Gemini 原生协议需兼容网关。请求失败明确报错，不会偷偷用演示结果替代研究。
 
-可选进程变量为 `TRUTH_AI_BASE_URL`、`TRUTH_AI_MODEL`、`TRUTH_AI_API_KEY`、`TAVILY_API_KEY`、`BRAVE_API_KEY`、`TRUTH_PORT`。[`.env.example`](.env.example) 仅为模板，**程序不自动读取 `.env`**。环境密钥不回传浏览器。
+可选变量为 `TRUTH_AI_BASE_URL`、`TRUTH_AI_MODEL`、`TRUTH_AI_API_KEY`、`TRUTH_SEARCH_PROVIDER`、`DEEPSEEK_API_KEY`、`TAVILY_API_KEY`、`BRAVE_API_KEY`、`TRUTH_PORT`。**`python app.py` 会读取项目内 `.env`**，已有进程变量优先；只接受这些字段，不执行命令或展开变量。可复制 [`.env.example`](.env.example) 为 `.env`。本机 `.env` 含秘密信息，请保护文件，不要分享或提交。服务器密钥不回传浏览器。
+
+使用 DeepSeek 时设置地址 `https://api.deepseek.com`、模型 `deepseek-flash`、`TRUTH_AI_API_KEY` 为自己的密钥，并设 `TRUTH_SEARCH_PROVIDER=deepseek`。搜索只调用固定官方 Messages 接口，并读取结构化 `web_search_tool_result`，不把模型正文里的链接当搜索结果。每条查询额外消耗一次模型/搜索调用（简要与标准四条，深入八条），每条最多一次原生搜索。受供应商可用性与计费规则限制，参见 [DeepSeek 接入说明](https://api-docs.deepseek.com/en/)和[官方搜索实现](https://github.com/deepseek-ai/deepseek-harness/tree/master/packages/web/web-search-deepseek)。
+
+本机 AI 密钥只向同一来源（协议、主机、端口）继承；切换供应商需要填写其密钥。官方 DeepSeek 模型的规划与搜索关闭额外推理，简要分析使用 `low`，标准和深入使用 `high`，仍受各深度时限约束。参见[官方推理控制](https://api-docs.deepseek.com/guides/thinking_mode/)。
 
 **常驻来源：**来源管理器保存非秘密名称和 URL。全网交叉核对还会查询更广网络；仅指定来源会限定域名并披露范围。常驻来源不会自动成为可信来源。
 

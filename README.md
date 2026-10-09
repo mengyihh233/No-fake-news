@@ -23,7 +23,7 @@ Use the **local web app** with your own AI/search APIs, or install the **`tell-m
 | Authorized access | Session-only HTTP Basic credentials, Cookie, or Bearer token bound to an exact HTTPS origin. |
 | Portable reports | JSON import/export and standalone HTML export with eligible local screenshots embedded. |
 | Three languages | 简体中文 / English / 日本語 for UI, new narrative, export labels, CLI, Skill instructions, and documentation. Original excerpts stay unchanged. |
-| Your own model | OpenAI-compatible Chat Completions plus a separate Tavily or Brave search account. |
+| Your own model | OpenAI-compatible Chat Completions; DeepSeek native search reuses its official key, or choose Tavily / Brave. |
 
 Design rationale and diagram references: [Design notes](docs/DESIGN.md).
 
@@ -54,11 +54,15 @@ The server accepts local connections only and has no user authentication or publ
 
 ## Configure services and sources
 
-Open **API settings** and enter an AI Base URL, exact model ID, AI key, and a separate Tavily/Brave search key. A root such as `https://api.openai.com/v1` receives `/chat/completions`; a complete endpoint is also accepted. Explicit local compatible services may omit the AI key.
+Open **API settings** and enter an AI Base URL, exact model ID, AI key, and search provider. DeepSeek native search can reuse the official DeepSeek AI key; Tavily/Brave require their own key. A root such as `https://api.openai.com/v1` receives `/chat/completions`; a complete endpoint is also accepted. Explicit local compatible services may omit the AI key.
 
 Only the **Chat Completions text protocol** is supported; the model must return requested JSON. Native Anthropic Messages/Gemini protocols need a compatible gateway. Failed provider calls show an error and never silently fall back to the demo.
 
-Optional process variables: `TRUTH_AI_BASE_URL`, `TRUTH_AI_MODEL`, `TRUTH_AI_API_KEY`, `TAVILY_API_KEY`, `BRAVE_API_KEY`, `TRUTH_PORT`. [`.env.example`](.env.example) is a template; **`.env` is not automatically loaded**. Environment keys are not returned to the browser.
+Optional variables: `TRUTH_AI_BASE_URL`, `TRUTH_AI_MODEL`, `TRUTH_AI_API_KEY`, `TRUTH_SEARCH_PROVIDER`, `DEEPSEEK_API_KEY`, `TAVILY_API_KEY`, `BRAVE_API_KEY`, `TRUTH_PORT`. **`python app.py` loads the project-local `.env`**; existing process values take precedence. Only these names are accepted, with no command or variable expansion. Copy [`.env.example`](.env.example) to `.env` if desired. `.env` contains local secrets: protect it and never share or commit it. Server keys are not returned to the browser.
+
+For DeepSeek, set the base URL to `https://api.deepseek.com`, the model to `deepseek-flash`, `TRUTH_AI_API_KEY` to your own key, and `TRUTH_SEARCH_PROVIDER=deepseek`. Search uses the fixed official Messages endpoint and structured `web_search_tool_result` blocks, never links invented in model prose. Each query costs a separate model/search call (four queries for brief/standard, eight for deep), with at most one native search use per query. Provider availability and charges apply; see [DeepSeek setup](https://api-docs.deepseek.com/en/) and its [official search implementation](https://github.com/deepseek-ai/deepseek-harness/tree/master/packages/web/web-search-deepseek).
+
+The local AI key is inherited only for the same origin (scheme, host, port); a different provider requires its own key. For the official DeepSeek models, planning and search disable extra reasoning, brief analysis uses `low` effort, and standard/deep use `high`, under the same depth limits. See the [official reasoning controls](https://api-docs.deepseek.com/guides/thinking_mode/).
 
 **Preferred sources:** the source manager saves nonsecret names/URLs. Balanced research also searches the broader web; preferred-only restricts source domains and discloses this scope. Being preferred does not make a source reliable.
 

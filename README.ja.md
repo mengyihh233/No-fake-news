@@ -23,7 +23,7 @@
 | 許可されたアクセス | 正確な HTTPS オリジンに限定した HTTP Basic、Cookie、Bearer トークンをセッション中に使用。 |
 | 持ち運べる資料 | JSON 読込・書出し、ローカル画像を埋め込む単独 HTML 書出し。 |
 | 三言語 | 简体中文 / English / 日本語で UI、新規生成文、書出しラベル、CLI、Skill、文書を提供。引用は原言語のまま。 |
-| 自分のモデル | OpenAI 互換 Chat Completions と、別途 Tavily または Brave の検索アカウント。 |
+| 自分のモデル | OpenAI 互換 Chat Completions。DeepSeek 公式キーの検索への再利用、または Tavily / Brave を選択。 |
 
 配置・証拠図・参考資料は[デザイン説明](docs/DESIGN.md)を参照してください。
 
@@ -54,11 +54,15 @@ python app.py
 
 ## サービスと情報源の設定
 
-API 設定に AI Base URL、正確なモデル ID、AI キー、別途 Tavily/Brave の検索キーを入力します。`https://api.openai.com/v1` などのルートには `/chat/completions` を追加し、完全な URL も受け付けます。明示したローカル互換サービスでは AI キーを省略できます。
+API 設定に AI Base URL、正確なモデル ID、AI キーを入力し、検索サービスを選びます。DeepSeek 検索は公式 AI キーを再利用でき、Tavily/Brave には専用キーが必要です。`https://api.openai.com/v1` などのルートには `/chat/completions` を追加し、完全な URL も受け付けます。明示したローカル互換サービスでは AI キーを省略できます。
 
 **Chat Completions のテキスト形式**のみ対応し、指定 JSON を返せるモデルが必要です。Anthropic Messages/Gemini のネイティブ形式には互換ゲートウェイを使ってください。失敗時はエラーを示し、デモに置き換えません。
 
-任意の環境変数は `TRUTH_AI_BASE_URL`、`TRUTH_AI_MODEL`、`TRUTH_AI_API_KEY`、`TAVILY_API_KEY`、`BRAVE_API_KEY`、`TRUTH_PORT` です。[`.env.example`](.env.example) はテンプレートで、**`.env` は自動読込されません**。環境のキーはブラウザーに返しません。
+任意の変数は `TRUTH_AI_BASE_URL`、`TRUTH_AI_MODEL`、`TRUTH_AI_API_KEY`、`TRUTH_SEARCH_PROVIDER`、`DEEPSEEK_API_KEY`、`TAVILY_API_KEY`、`BRAVE_API_KEY`、`TRUTH_PORT` です。**`python app.py` はプロジェクト内の `.env` を読み込み**、既存のプロセス変数を優先します。上記項目のみ受け付け、コマンド実行や変数展開はしません。[`.env.example`](.env.example) をコピーできます。秘密を含む `.env` は保護し、共有・コミットしないでください。サーバーキーはブラウザーに返しません。
+
+DeepSeek では接続先 `https://api.deepseek.com`、モデル `deepseek-flash`、自分のキーを `TRUTH_AI_API_KEY` に設定し、`TRUTH_SEARCH_PROVIDER=deepseek` とします。検索は固定した公式 Messages API の `web_search_tool_result` を使い、モデル本文のリンクを検索結果と見なしません。各検索にモデル・検索呼出しが追加されます（簡潔・標準は四件、詳細は八件）。一件につきネイティブ検索は最大一回です。提供元の利用可否と料金が適用されます。[DeepSeek 接続説明](https://api-docs.deepseek.com/en/)と[公式検索実装](https://github.com/deepseek-ai/deepseek-harness/tree/master/packages/web/web-search-deepseek)を参照してください。
+
+ローカル AI キーは同じ origin（プロトコル・ホスト・ポート）にのみ引き継がれ、別の提供元には専用キーが必要です。公式 DeepSeek モデルの計画と検索は追加推論を無効にし、簡潔な分析は `low`、標準・詳細は `high` を使用します。深度ごとの制限時間は引き続き適用されます。[公式推論設定](https://api-docs.deepseek.com/guides/thinking_mode/)を参照してください。
 
 **保存する情報源：**管理画面で機密でない名前・URL を保存します。広く照合する設定では Web 全体も検索し、指定情報源のみではドメインを限定して範囲を記録します。優先することと信頼できることは別です。
 

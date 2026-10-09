@@ -66,6 +66,17 @@ test('AI reasoning renders every premise type in three languages', () => {
   }
 });
 
+test('DeepSeek search reuses an entered key only for the official HTTPS origin', () => {
+  const browser = browserData();
+  for (const base_url of ['https://api.deepseek.com', 'https://api.deepseek.com:443/v1']) {
+    assert.equal(browser.run('canReuseDeepSeekKey(input)', {base_url,api_key:'TEST_ONLY'}), true);
+  }
+  for (const base_url of ['http://api.deepseek.com', 'https://api.deepseek.com:8443', 'https://api.deepseek.com.evil.example', 'https://user:pass@api.deepseek.com', 'https://example.com']) {
+    assert.equal(browser.run('canReuseDeepSeekKey(input)', {base_url,api_key:'TEST_ONLY'}), false);
+  }
+  assert.equal(browser.run('canReuseDeepSeekKey(input)', {base_url:'https://api.deepseek.com',api_key:''}), false);
+});
+
 test('evidence view removes all AI verdicts and normalizes evaluative link relations', () => {
   const browser = browserData();
   const report = structuredClone(demo);

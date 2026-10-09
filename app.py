@@ -19,6 +19,9 @@ from truth_backend.i18n import SUPPORTED_LANGUAGES, error_message
 from truth_backend.reports import public_report, validate_references
 from truth_backend.research import research, summarize
 from truth_backend.security import ServiceError
+from truth_backend.local_config import load_local_config
+from truth_backend.providers import resolve_search
+from truth_backend.models import SearchConfig
 
 
 ROOT = Path(__file__).resolve().parent
@@ -120,10 +123,12 @@ async def capture(name: str, request: Request):
 @app.get("/api/health")
 async def health(language: Language = "zh-CN"):
     return {"status": "ok", "version": "0.1.0", "local_only": True,
-            "search_providers": ["tavily", "brave"], "ai_protocol": "openai-chat-completions",
+            "search_providers": ["deepseek", "tavily", "brave"], "ai_protocol": "openai-chat-completions",
+            "default_search_provider": os.getenv("TRUTH_SEARCH_PROVIDER", "tavily") if os.getenv("TRUTH_SEARCH_PROVIDER", "tavily") in {"deepseek", "tavily", "brave"} else "tavily",
             "configured": {"ai_base_url": bool(os.getenv("TRUTH_AI_BASE_URL")),
                            "ai_model": bool(os.getenv("TRUTH_AI_MODEL")), "ai_key": bool(os.getenv("TRUTH_AI_API_KEY")),
-                           "tavily": bool(os.getenv("TAVILY_API_KEY")), "brave": bool(os.getenv("BRAVE_API_KEY"))},
+                           "tavily": bool(os.getenv("TAVILY_API_KEY")), "brave": bool(os.getenv("BRAVE_API_KEY")),
+                           "deepseek": bool(resolve_search(SearchConfig(provider="deepseek")).api_key.get_secret_value())},
             "screenshots": screenshot_status(language), "max_screenshot_sources": 3, "supported_languages": SUPPORTED_LANGUAGES,
             "brand": "No fake news", "repository_name": "No-fake-news",
             "source_access": {"preferred_urls": True, "policies": ["balanced", "preferred-only"],
@@ -167,4 +172,5 @@ async def demo(mode: Mode = "evidence-only", language: Language = "zh-CN"):
 
 if __name__ == "__main__":
     import uvicorn
+    load_local_config(ROOT)
     uvicorn.run(app, host="127.0.0.1", port=int(os.getenv("TRUTH_PORT", "8000")), access_log=False)

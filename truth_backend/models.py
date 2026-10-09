@@ -22,7 +22,7 @@ class AIConfig(StrictModel):
 
 
 class SearchConfig(StrictModel):
-    provider: Literal["tavily", "brave"] = "tavily"
+    provider: Literal["tavily", "brave", "deepseek"] = "tavily"
     api_key: SecretStr = SecretStr("")
 
 
@@ -87,8 +87,8 @@ class Evidence(StrictModel):
 
 
 class Link(StrictModel):
-    from_: str = Field(alias="from")
-    to: str
+    from_: str = Field(alias="from", description="An existing evidence ID (E#); source of the evidence-to-claim link.")
+    to: str = Field(description="An existing claim ID (C#); target of the evidence-to-claim link.")
     relation: Literal["relevant_to", "supports", "contradicts", "qualifies", "context"]
     note: str = Field(default="", max_length=3000)
 

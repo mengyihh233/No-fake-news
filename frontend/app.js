@@ -118,6 +118,19 @@
     return isLoopbackAI(ai.base_url) || (!ai.base_url && Boolean(state.capabilities.configured?.ai_base_url));
   }
 
+  function canReuseDeepSeekKey(ai) {
+    if (!ai.api_key) return false;
+    try {
+      const endpoint = new URL(ai.base_url);
+      return endpoint.protocol === 'https:' && endpoint.hostname === 'api.deepseek.com' && (!endpoint.port || endpoint.port === '443') && !endpoint.username && !endpoint.password;
+    } catch { return false; }
+  }
+
+  function searchCredentialReady(ai = getAISettings()) {
+    const search = getSearchSettings();
+    return Boolean(search.api_key || state.capabilities.configured?.[search.provider] || (search.provider === 'deepseek' && canReuseDeepSeekKey(ai)));
+  }
+
   function saveSettings() {
     const ai = getAISettings();
     const safeSettings = { base_url: ai.base_url, model: ai.model, search_provider: $('search-provider').value, depth: $('research-depth').value, include_screenshots: $('include-screenshots').checked };
@@ -130,7 +143,7 @@
       const saved = JSON.parse(localStorage.getItem(settingsKey) || '{}');
       if (typeof saved.base_url === 'string') $('ai-base-url').value = saved.base_url;
       if (typeof saved.model === 'string') $('ai-model').value = saved.model;
-      if (['tavily', 'brave'].includes(saved.search_provider)) $('search-provider').value = saved.search_provider;
+      if (['deepseek', 'tavily', 'brave'].includes(saved.search_provider)) $('search-provider').value = saved.search_provider;
       if (typeof saved.include_screenshots === 'boolean') $('include-screenshots').checked = saved.include_screenshots;
       if (['brief', 'standard', 'deep'].includes(saved.depth)) $('research-depth').value = saved.depth;
     } catch { /* Invalid old preferences are ignored; no keys are ever restored. */ }
@@ -140,7 +153,7 @@
   function updateConnectionStatus() {
     const configured = state.capabilities.configured || {};
     const ai = getAISettings();
-    const ready = Boolean((ai.api_key || configured.ai_key || canUseAIWithoutKey(ai)) && (ai.model || configured.ai_model) && (getSearchSettings().api_key || configured[getSearchSettings().provider]));
+    const ready = Boolean((ai.api_key || configured.ai_key || canUseAIWithoutKey(ai)) && (ai.model || configured.ai_model) && searchCredentialReady(ai));
     $('connection-status').textContent = ready ? t('common.connection_ready') : t('common.connection_missing');
     $('connection-status').classList.toggle('ready', ready);
   }
@@ -247,7 +260,7 @@
     let ai;
     try { ai = validateAI(); } catch (error) { showError(error.message, true); return; }
     const search = getSearchSettings();
-    if (!search.api_key && !state.capabilities.configured?.[search.provider]) { showError(t('errors.search_key'), true); return; }
+    if (!searchCredentialReady(ai)) { showError(t('errors.search_key'), true); return; }
     const mode = document.querySelector('input[name="mode"]:checked').value;
     const depth = $('research-depth').value;
     saveSettings();
@@ -435,6 +448,8 @@
       const health = await response.json();
       if (health && typeof health.configured === 'object') state.capabilities = health;
       const configured = state.capabilities.configured || {};
+      const defaultSearch = health.default_search_provider;
+      if (['deepseek', 'tavily', 'brave'].includes(defaultSearch) && !configured[$('search-provider').value] && configured[defaultSearch] && !getSearchSettings().api_key) $('search-provider').value = defaultSearch;
       if (configured.ai_model) $('ai-model').placeholder = t('settings.env_model');
       if (configured.ai_key) $('ai-key').placeholder = t('settings.env_key');
       if (configured[$('search-provider').value]) $('search-key').placeholder = t('settings.env_key');

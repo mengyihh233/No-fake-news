@@ -18,17 +18,54 @@ def now() -> str:
     return datetime.now(timezone.utc).isoformat()
 
 
+def ai_origin(base_url: str) -> tuple[str, str, int] | None:
+    try:
+        parts = urlsplit(base_url)
+        if parts.scheme not in {"http", "https"} or not parts.hostname or parts.username is not None or parts.password is not None:
+            return None
+        port = parts.port if parts.port is not None else (443 if parts.scheme == "https" else 80)
+        return (parts.scheme, parts.hostname, port) if 1 <= port <= 65535 else None
+    except ValueError:
+        return None
+
+
 def resolve_ai(config: AIConfig) -> AIConfig:
+    default_url = os.getenv("TRUTH_AI_BASE_URL", "https://api.openai.com/v1")
+    selected_url = config.base_url or default_url
+    token = config.api_key.get_secret_value()
+    if not token and ai_origin(selected_url) is not None and ai_origin(selected_url) == ai_origin(default_url):
+        token = os.getenv("TRUTH_AI_API_KEY", "")
     return AIConfig(
-        base_url=config.base_url or os.getenv("TRUTH_AI_BASE_URL", "https://api.openai.com/v1"),
-        api_key=config.api_key.get_secret_value() or os.getenv("TRUTH_AI_API_KEY", ""),
+        base_url=selected_url,
+        api_key=token,
         model=config.model or os.getenv("TRUTH_AI_MODEL", ""),
     )
 
 
-def resolve_search(config: SearchConfig) -> SearchConfig:
-    env = "TAVILY_API_KEY" if config.provider == "tavily" else "BRAVE_API_KEY"
-    return SearchConfig(provider=config.provider, api_key=config.api_key.get_secret_value() or os.getenv(env, ""))
+DEEPSEEK_SEARCH_ENDPOINT = "https://api.deepseek.com/anthropic/v1/messages"
+
+
+def is_official_deepseek(base_url: str) -> bool:
+    """Reuse a chat key only when its resolved destination is the official HTTPS origin."""
+    try:
+        parts = urlsplit(base_url)
+        return (parts.scheme == "https" and parts.hostname == "api.deepseek.com"
+                and parts.port in {None, 443} and parts.username is None and parts.password is None)
+    except ValueError:
+        return False
+
+
+def resolve_search(config: SearchConfig, ai: AIConfig | None = None) -> SearchConfig:
+    env = {"tavily": "TAVILY_API_KEY", "brave": "BRAVE_API_KEY", "deepseek": "DEEPSEEK_API_KEY"}[config.provider]
+    token = config.api_key.get_secret_value() or os.getenv(env, "")
+    if config.provider == "deepseek" and not token:
+        if is_official_deepseek(os.getenv("TRUTH_AI_BASE_URL", "")):
+            token = os.getenv("TRUTH_AI_API_KEY", "")
+        if not token and ai is not None:
+            resolved = resolve_ai(ai)
+            if is_official_deepseek(resolved.base_url):
+                token = resolved.api_key.get_secret_value()
+    return SearchConfig(provider=config.provider, api_key=token)
 
 
 def provider_error(provider: str, status: int) -> ServiceError:
@@ -79,6 +116,14 @@ async def complete(config: AIConfig, system: str, data: dict, schema: type[BaseM
         ],
         "stream": False,
     }
+    if is_official_deepseek(config.base_url) and config.model in {"deepseek-flash", "deepseek-v4-pro"}:
+        # Planning needs structured queries; reserve reasoning time for analysis.
+        if schema.__name__ == "Plan":
+            payload.update(thinking={"type": "disabled"}, max_tokens=2048)
+        else:
+            payload.update(thinking={"type": "enabled"},
+                           reasoning_effort="low" if data.get("depth") == "brief" else "high",
+                           max_tokens=12000)
     response = await pinned_request(endpoint, method="POST", headers=headers, json_body=payload,
                                     allow_loopback=True, max_bytes=1_000_000, timeout=65)
     if response.status_code >= 400:
@@ -107,6 +152,21 @@ async def search_web(query: str, config: SearchConfig, domains: list[str] | None
             json_body={"query": query, "max_results": 3, "search_depth": "basic", "include_answer": False,
                        "include_raw_content": "text", **({"include_domains": domains} if domains else {})}, timeout=20, max_bytes=1_000_000,
         )
+    elif config.provider == "deepseek":
+        # The native tool is an auxiliary model turn, not chat prose used as evidence.
+        # Keep its endpoint fixed so a reused AI key cannot reach a user-supplied host.
+        if domains:
+            query += " (" + " OR ".join("site:" + domain for domain in domains) + ")"
+        response = await pinned_request(
+            DEEPSEEK_SEARCH_ENDPOINT, method="POST",
+            headers={"x-api-key": token, "Authorization": f"Bearer {token}",
+                     "anthropic-version": "2023-06-01", "Content-Type": "application/json",
+                     "Accept": "application/json"},
+            json_body={"model": "deepseek-flash", "max_tokens": 2048, "thinking": {"type": "disabled"},
+                       "messages": [{"role": "user", "content": [{"type": "text", "text": "Perform a web search for the query: " + query}]}],
+                       "tools": [{"type": "web_search_20250305", "name": "web_search", "max_uses": 1}]},
+            timeout=65, max_bytes=1_000_000, redirects=0,
+        )
     else:
         import urllib.parse
         if domains:
@@ -123,6 +183,8 @@ async def search_web(query: str, config: SearchConfig, domains: list[str] | None
         raise provider_error(config.provider.title(), response.status_code)
     try:
         data = json.loads(response.content)
+        if config.provider == "deepseek":
+            return parse_deepseek_search(data, domains=domains, token=token)
         results = data.get("results", []) if config.provider == "tavily" else data.get("web", {}).get("results", [])
         if not isinstance(results, list):
             raise ValueError
@@ -139,6 +201,52 @@ async def search_web(query: str, config: SearchConfig, domains: list[str] | None
         return output
     except (ValueError, AttributeError, TypeError):
         raise ServiceError("invalid_search_output", "搜索供应商响应格式无效。") from None
+
+
+def parse_deepseek_search(data: dict, *, domains: list[str] | None = None, token: str = "") -> list[dict]:
+    """Accept only native result blocks; join original citation text by exact URL."""
+    if not isinstance(data, dict) or not isinstance(data.get("content"), list):
+        raise ServiceError("invalid_search_output", "搜索供应商响应格式无效。")
+    blocks = data["content"]
+    result_blocks = [block for block in blocks if isinstance(block, dict) and block.get("type") == "web_search_tool_result"]
+    if not result_blocks or any(not isinstance(block.get("content"), list) for block in result_blocks):
+        raise ServiceError("invalid_search_output", "搜索供应商响应格式无效。")
+    snippets = {}
+    for block in blocks:
+        if not isinstance(block, dict) or block.get("type") != "text":
+            continue
+        citations = block.get("citations", [])
+        if not isinstance(citations, list):
+            raise ServiceError("invalid_search_output", "搜索供应商响应格式无效。")
+        for cite in citations:
+            if not isinstance(cite, dict):
+                continue
+            url, text = cite.get("url"), cite.get("cited_text")
+            if isinstance(url, str) and url and isinstance(text, str) and text and url not in snippets:
+                snippets[url] = text
+    output, seen = [], set()
+    for block in result_blocks:
+        for item in block["content"]:
+            if not isinstance(item, dict) or item.get("type") != "web_search_result":
+                continue
+            url = item.get("url")
+            if not isinstance(url, str) or not url or url in seen:
+                continue
+            seen.add(url)
+            try:
+                _scheme, host, _port = check_url_shape(url)
+                check_url_for_secrets(url, [token] if token else [])
+            except ServiceError:
+                continue
+            if domains and host not in domains:
+                continue
+            title, age = item.get("title"), item.get("page_age")
+            output.append({"url": url, "title": title[:1000] if isinstance(title, str) else "",
+                           "snippet": snippets.get(url, "")[:5000], "raw_content": "",
+                           "published_at": age[:100] if isinstance(age, str) and age else None})
+            if len(output) == 3:
+                return output
+    return output
 
 
 class TextExtractor(HTMLParser):
