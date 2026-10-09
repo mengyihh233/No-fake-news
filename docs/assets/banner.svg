@@ -1,0 +1,14 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1280" height="360" viewBox="0 0 1280 360" role="img" aria-labelledby="title description">
+  <title id="title">No fake news</title>
+  <desc id="description">Follow the evidence. Keep the judgment yours.</desc>
+  <rect width="1280" height="360" rx="24" fill="#f4f5f7"/>
+  <path d="M850 0v360M1020 0v360M1190 0v360M800 90h480M800 180h480M800 270h480" stroke="#dce1e8"/>
+  <rect x="58" y="48" width="161" height="27" rx="13" fill="#fbede6"/>
+  <text x="76" y="67" font-family="Arial,Microsoft YaHei,Yu Gothic,sans-serif" font-size="13" fill="#8e3118" letter-spacing="2">EVIDENCE FIRST</text>
+  <text x="58" y="157" font-family="Georgia,serif" font-size="70" fill="#222936">No fake news<tspan fill="#b74624">.</tspan></text>
+  <text x="62" y="215" font-family="Arial,Microsoft YaHei,Yu Gothic,sans-serif" font-size="24" fill="#5d6879">Follow the evidence. Keep the judgment yours.</text>
+  <text x="62" y="293" font-family="Arial,Microsoft YaHei,Yu Gothic,sans-serif" font-size="15" fill="#5d6879" letter-spacing="1">SKILL + LOCAL WEB APP · 中文 / ENGLISH / 日本語</text>
+  <path d="M880 178l62-60 80 77 98-102" fill="none" stroke="#b74624" stroke-width="4"/>
+  <g fill="#f4f5f7" stroke="#b74624" stroke-width="3"><circle cx="880" cy="178" r="9"/><circle cx="942" cy="118" r="9"/><circle cx="1022" cy="195" r="9"/><circle cx="1120" cy="93" r="9"/></g>
+  <g font-family="Arial,Microsoft YaHei,Yu Gothic,sans-serif" font-size="12" fill="#5d6879"><text x="858" y="212">CLAIM</text><text x="912" y="151">SOURCE</text><text x="993" y="229">CONTEXT</text><text x="1094" y="127">REVIEW</text></g>
+</svg>

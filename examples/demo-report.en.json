@@ -1,0 +1,494 @@
+{
+  "schema_version": "1.0",
+  "topic": "Humans landed on the Moon successfully only once, with no later crewed landings.",
+  "mode": "evidence-only",
+  "depth": "standard",
+  "generated_at": "2026-10-09T09:14:38.996260+00:00",
+  "scope": "Saved demonstration, manually compiled after opening NASA pages during development; loading it does not search again. Scope: crewed Apollo lunar surface landings in 1969–1972 only. No claim is made about missions after 1972 or the all-history total as of 2026. A successful landing here means a crewed lunar module landed on the Moon and the mission returned to Earth. First/subsequent landings, orbit/flyby, robotic missions, and Earth splashdown are distinct. Timeline dates are lunar landing dates, except Apollo 13 uses its launch date and explicitly notes the later cancellation. Apollo 16 uses the dedicated source's 1972-04-21 UT date.",
+  "limitations": [
+    "This is a fixed example checked online during development, not live research for the current input. Pages can change and should be reopened for a new investigation.",
+    "All five sources are NASA materials in the NASA-Apollo family. Internal cross-checks do not constitute confirmation by five independent institutions.",
+    "The example checks mission counts and types. It does not independently reanalyse telemetry, samples, or all communications, and does not infer other disputed claims.",
+    "The NSSDCA overview gives April 20 for Apollo 16, while the dedicated page gives April 21 UT and April 20 locally in the US. The timeline uses the explicit UT date; the annual count is unaffected.",
+    "The newer NASA overview describes Apollo 14 walks under January 1971. The NSSDCA list distinguishes the January 31 launch from the February 5 landing. This example uses the latter landing date.",
+    "Evidence excerpts are faithful Chinese paraphrases, not verbatim quotations; they remain unchanged in this translated narrative. Context identifies the original passage. The source text was opened, not merely inferred from search snippets.",
+    "E1 has an actual full-page browser capture of the original NASA page, preserved with SHA-256. The other sources have no captures. An image aids review and does not independently prove a historical event.",
+    "search_log lists two key exact searches for verification, not the complete browsing history. Result counts are returned entries, not independent sources.",
+    "Annual counts deterministically count listed missions; exact entries and inclusion rules accompany points. Validation does not establish list completeness. The 1970 zero means no successful landing entry in this list."
+  ],
+  "claims": [
+    {
+      "id": "C1",
+      "text": "During Apollo in 1969–1972, humans completed only one successful crewed lunar surface landing.",
+      "kind": "fact",
+      "verdict": "Inconsistent with the listed records for this period",
+      "analysis": "NSSDCA lists six landing-and-return missions: Apollo 11, 12, 14, 15, 16, and 17. NASA's visualization and overview also list six landings. This compares the same period and mission type."
+    },
+    {
+      "id": "C2",
+      "text": "After Apollo 11's first landing, no further successful crewed lunar surface landing occurred through the end of 1972.",
+      "kind": "fact",
+      "verdict": "Five later mission records run counter to this claim",
+      "analysis": "Apollo 12, 14, 15, 16, and 17 landed after Apollo 11. One qualifying later example tests a universal 'never again' claim; the list supplies five."
+    },
+    {
+      "id": "C3",
+      "text": "Apollo 13 cancelled its planned lunar landing in 1970 and cannot count as a successful lunar surface landing.",
+      "kind": "fact",
+      "verdict": "Supported by the official mission record",
+      "analysis": "NASA says the planned third landing was cancelled after an oxygen-tank accident and the crew returned safely. 'Successful failure' describes the rescue, not a completed lunar landing."
+    }
+  ],
+  "evidence": [
+    {
+      "id": "E1",
+      "title": "The Apollo Program (1963 - 1972)",
+      "url": "https://nssdc.gsfc.nasa.gov/planetary/lunar/apollo.html",
+      "publisher": "NASA Goddard Space Flight Center / NSSDCA",
+      "published_at": null,
+      "retrieved_at": "2026-10-09",
+      "source_type": "primary",
+      "content_kind": "full_text",
+      "excerpt": "中文忠实转述任务清单：\nApollo 11：1969-07-20 月面着陆并返航；\nApollo 12：1969-11-19 月面着陆并返航；\nApollo 14：1971-02-05 月面着陆并返航；\nApollo 15：1971-07-30 月面着陆并返航；\nApollo 16：1972-04-20 月面着陆并返航（总览未标时区）；\nApollo 17：1972-12-11 月面着陆并返航。\n清单另记 Apollo 13 因故障取消原定月面着陆，飞掠月球后返回地球。",
+      "context": "Faithful Chinese paraphrase retained. See the opening paragraph and Apollo Lunar Missions list, last updated 2023-02-17. The page separates Apollo 8/10 orbit from landings. Apollo 16's explicitly timed UT date is cross-checked with E4 rather than assuming a timezone for April 20.",
+      "source_family": "NASA-Apollo",
+      "status": "retrieved",
+      "claim_ids": [
+        "C1",
+        "C2",
+        "C3"
+      ],
+      "screenshots": [
+        {
+          "url": "/captures/9a1467fb8e7f40ad98a3171026547881.jpg",
+          "captured_at": "2026-10-09T08:53:31.841516+00:00",
+          "sha256": "4106b91562ebb0c8dc2a2ec541ed381140d39d0c231f2a4b6d4fca83ffddb7f5",
+          "source_url": "https://nssdc.gsfc.nasa.gov/planetary/lunar/apollo.html"
+        }
+      ]
+    },
+    {
+      "id": "E2",
+      "title": "Apollo Landing Sites with Moon Phases",
+      "url": "https://science.nasa.gov/resource/apollo-landing-sites-with-moon-phases/",
+      "publisher": "NASA Science / Ernie Wright",
+      "published_at": "2019-11-14",
+      "retrieved_at": "2026-10-09",
+      "source_type": "primary",
+      "content_kind": "full_text",
+      "excerpt": "NASA 表示阿波罗任务在 1969—1972 年间着陆于六个月面地点；Apollo 12 与 14 之间间隔较长，是因为 Apollo 13 发生严重设备故障而未能着陆。",
+      "context": "Faithful Chinese paraphrase retained. See the first two paragraphs: period, six sites, and the Apollo 13 exception. Article date 2019-11-14; updated 2025-02-12. The text was read, not the video frame by frame. Its NASA sources are not independent of E1's institution.",
+      "source_family": "NASA-Apollo",
+      "status": "retrieved",
+      "claim_ids": [
+        "C1",
+        "C2",
+        "C3"
+      ],
+      "screenshots": []
+    },
+    {
+      "id": "E3",
+      "title": "Apollo 13: Mission Details",
+      "url": "https://www.nasa.gov/missions/apollo/apollo-13-mission-details/",
+      "publisher": "NASA",
+      "published_at": "2009-07-08",
+      "retrieved_at": "2026-10-09",
+      "source_type": "primary",
+      "content_kind": "full_text",
+      "excerpt": "Apollo 13 原拟在 Fra Mauro 着陆；机上爆炸迫使其不着陆而绕过月球，该地点随后交给 Apollo 14。第三次月面着陆尝试因服务舱氧气罐破裂而中止。",
+      "context": "Faithful Chinese paraphrase retained. See Mission Objective and early Mission Highlights. The 'successful failure' rescue is distinct from the cancelled landing. The later Landing field concerns return to Earth.",
+      "source_family": "NASA-Apollo",
+      "status": "retrieved",
+      "claim_ids": [
+        "C1",
+        "C3"
+      ],
+      "screenshots": []
+    },
+    {
+      "id": "E4",
+      "title": "Apollo 16",
+      "url": "https://nssdc.gsfc.nasa.gov/planetary/lunar/apollo16info.html",
+      "publisher": "NASA Goddard Space Flight Center / NSSDCA",
+      "published_at": null,
+      "retrieved_at": "2026-10-09",
+      "source_type": "primary",
+      "content_kind": "full_text",
+      "excerpt": "Apollo 16 的专项记录明确列出月面着陆时刻为 1972 年 4 月 21 日 UT 02:23:35，并在括号内列出美国当地 4 月 20 日；着陆地点为 Descartes。",
+      "context": "Faithful Chinese paraphrase retained. See the mission-date fields below the title; updated 2022-08-15. Use the stated UT time without silently correcting the parenthetical timezone abbreviation. Day-level differences do not change the 1972 count.",
+      "source_family": "NASA-Apollo",
+      "status": "retrieved",
+      "claim_ids": [
+        "C1",
+        "C2"
+      ],
+      "screenshots": []
+    },
+    {
+      "id": "E5",
+      "title": "The Apollo Program",
+      "url": "https://www.nasa.gov/the-apollo-program/",
+      "publisher": "NASA",
+      "published_at": null,
+      "retrieved_at": "2026-10-09",
+      "source_type": "primary",
+      "content_kind": "full_text",
+      "excerpt": "NASA 项目总览标示六次月面着陆任务；Apollo 11 为首次，Apollo 12 为第二次；月面活动日志记录 1969—1972 年间六组、每组两名宇航员的月面操作。",
+      "context": "Faithful Chinese paraphrase retained. See the Lunar Landing Missions count, Apollo 11/12 sections, and Apollo Lunar Surface Journal description. The Apollo 14 month discrepancy prevents using that overview for the precise landing date. Official identity is not sufficient to accept every detail.",
+      "source_family": "NASA-Apollo",
+      "status": "retrieved",
+      "claim_ids": [
+        "C1",
+        "C2"
+      ],
+      "screenshots": []
+    }
+  ],
+  "links": [
+    {
+      "from": "E1",
+      "to": "C1",
+      "relation": "contradicts",
+      "note": "Six missions in the same list meet this report's definition; this relationship is an analytical annotation."
+    },
+    {
+      "from": "E2",
+      "to": "C1",
+      "relation": "contradicts",
+      "note": "Six sites in 1969–1972 cross-check the count within the same institution as E1."
+    },
+    {
+      "from": "E5",
+      "to": "C1",
+      "relation": "contradicts",
+      "note": "The overview cross-checks six landings; precise dates come from mission entries."
+    },
+    {
+      "from": "E1",
+      "to": "C2",
+      "relation": "contradicts",
+      "note": "The list records Apollo 12, 14, 15, 16, and 17 after Apollo 11."
+    },
+    {
+      "from": "E4",
+      "to": "C2",
+      "relation": "contradicts",
+      "note": "Apollo 16 is a specific later landing with an explicit UT date."
+    },
+    {
+      "from": "E3",
+      "to": "C3",
+      "relation": "supports",
+      "note": "Mission objectives and highlights explicitly state cancellation."
+    },
+    {
+      "from": "E1",
+      "to": "C3",
+      "relation": "supports",
+      "note": "The list identifies Apollo 13 as a flyby and return with its landing cancelled."
+    },
+    {
+      "from": "E3",
+      "to": "C1",
+      "relation": "qualifies",
+      "note": "A cancelled landing is excluded from successful counts and does not determine later outcomes."
+    }
+  ],
+  "timeline": [
+    {
+      "date": "1969-07-20",
+      "title": "Apollo 11: lunar landing",
+      "detail": "Landed in the Sea of Tranquility, first of six listed successful crewed landings in this period. Earth splashdown is a different date.",
+      "evidence_ids": [
+        "E1",
+        "E5"
+      ]
+    },
+    {
+      "date": "1969-11-19",
+      "title": "Apollo 12: lunar landing",
+      "detail": "Landed in the Ocean of Storms after Apollo 11; NASA's overview describes it as the second lunar landing.",
+      "evidence_ids": [
+        "E1",
+        "E5"
+      ]
+    },
+    {
+      "date": "1970-04-11",
+      "title": "Apollo 13: launch; landing later cancelled",
+      "detail": "This is the launch date, not a landing date. The April 11–17 mission suffered a failure, cancelled its landing, flew by the Moon, and returned safely. It is excluded from successful landings.",
+      "evidence_ids": [
+        "E1",
+        "E3"
+      ]
+    },
+    {
+      "date": "1971-02-05",
+      "title": "Apollo 14: lunar landing",
+      "detail": "Landed at Fra Mauro. NSSDCA distinguishes the January 31 launch and February 5 landing; the dates cannot be interchanged.",
+      "evidence_ids": [
+        "E1",
+        "E3"
+      ]
+    },
+    {
+      "date": "1971-07-30",
+      "title": "Apollo 15: lunar landing",
+      "detail": "Landed in the Hadley Rille region and is counted in 1971.",
+      "evidence_ids": [
+        "E1"
+      ]
+    },
+    {
+      "date": "1972-04-21",
+      "title": "Apollo 16: lunar landing (UT date)",
+      "detail": "Landed at Descartes. The dedicated record states April 21 at 02:23:35 UT and April 20 locally in the US. The timeline uses the explicit UT date.",
+      "evidence_ids": [
+        "E1",
+        "E4"
+      ]
+    },
+    {
+      "date": "1972-12-11",
+      "title": "Apollo 17: lunar landing",
+      "detail": "Landed at Taurus-Littrow, the sixth listed successful crewed landing within this Apollo period. No later period is assessed here.",
+      "evidence_ids": [
+        "E1",
+        "E5"
+      ]
+    }
+  ],
+  "charts": [
+    {
+      "title": "Successful crewed Apollo lunar landings, 1969–1972",
+      "unit": "missions",
+      "kind": "bar",
+      "points": [
+        {
+          "label": "1969",
+          "value": 2,
+          "evidence_ids": [
+            "E1",
+            "E5"
+          ],
+          "calculation": {
+            "operation": "count",
+            "source_quotes": [
+              "Apollo 11：1969-07-20 月面着陆并返航",
+              "Apollo 12：1969-11-19 月面着陆并返航"
+            ],
+            "description": "Count E1's listed successful crewed lunar landing-and-return mission entries by landing year. Unit: missions; only the cited list is counted, and its completeness requires separate review."
+          }
+        },
+        {
+          "label": "1970",
+          "value": 0,
+          "evidence_ids": [
+            "E1",
+            "E3"
+          ],
+          "calculation": {
+            "operation": "count",
+            "source_quotes": [],
+            "description": "Count E1's listed successful crewed lunar landing-and-return mission entries by landing year. Unit: missions; only the cited list is counted, and its completeness requires separate review."
+          }
+        },
+        {
+          "label": "1971",
+          "value": 2,
+          "evidence_ids": [
+            "E1"
+          ],
+          "calculation": {
+            "operation": "count",
+            "source_quotes": [
+              "Apollo 14：1971-02-05 月面着陆并返航",
+              "Apollo 15：1971-07-30 月面着陆并返航"
+            ],
+            "description": "Count E1's listed successful crewed lunar landing-and-return mission entries by landing year. Unit: missions; only the cited list is counted, and its completeness requires separate review."
+          }
+        },
+        {
+          "label": "1972",
+          "value": 2,
+          "evidence_ids": [
+            "E1",
+            "E4",
+            "E5"
+          ],
+          "calculation": {
+            "operation": "count",
+            "source_quotes": [
+              "Apollo 16：1972-04-20 月面着陆并返航（总览未标时区）",
+              "Apollo 17：1972-12-11 月面着陆并返航"
+            ],
+            "description": "Count E1's listed successful crewed lunar landing-and-return mission entries by landing year. Unit: missions; only the cited list is counted, and its completeness requires separate review."
+          }
+        }
+      ],
+      "note": "Count of E1's listed successful missions by lunar landing year: Apollo 11/12 in 1969, 14/15 in 1971, 16/17 in 1972; 2+0+2+2=6. Apollo 13's cancelled 1970 landing counts as zero successful landings. The unit is missions, not people, launches, orbits, or robotic landings. This is a report-derived chart, not a NASA figure."
+    }
+  ],
+  "comparisons": [
+    {
+      "case": "Later comparable mission: Apollo 12 and Apollo 11",
+      "date": "1969-07-20 / 1969-11-19",
+      "similarities": "Both are Apollo crewed lunar landing-and-return missions under the same counting definition.",
+      "differences": "Apollo 11 was first and landed in the Sea of Tranquility; Apollo 12 was later and landed in the Ocean of Storms.",
+      "limits": "A direct comparison of records in one period distinguishes first from only once. It does not use resemblance to prove authenticity or infer counts in other periods.",
+      "evidence_ids": [
+        "E1",
+        "E5"
+      ]
+    },
+    {
+      "case": "Different outcomes: Apollo 13 and completed landings",
+      "date": "1970-04-11—1970-04-17",
+      "similarities": "All were crewed Apollo flights; Apollo 13 also planned to land.",
+      "differences": "Apollo 13 cancelled the landing and returned safely, while Apollo 11, 12, 14, 15, 16, and 17 completed lunar landings. Rescue and completion of the original surface mission are different outcomes.",
+      "limits": "Apollo 13's outcome concerns that mission only. A single failure does not establish failure of earlier/later missions, and 'successful failure' is not a successful lunar landing.",
+      "evidence_ids": [
+        "E1",
+        "E3"
+      ]
+    }
+  ],
+  "observations": [
+    {
+      "kind": "data",
+      "text": "Deduplicating E1's landing-and-return entries and counting missions by landing year gives 2 (11/12) in 1969, 0 in 1970, 2 (14/15) in 1971, and 2 (16/17) in 1972: six total. The 1970 zero refers to listed successful landings, not an absence of crewed flights; E3 records Apollo 13. Launches, people, orbits, and robotic missions are separate units.",
+      "claim_ids": [
+        "C1",
+        "C2",
+        "C3"
+      ],
+      "evidence_ids": [
+        "E1",
+        "E3"
+      ]
+    },
+    {
+      "kind": "logic",
+      "text": "E5 describes Apollo 11 as first and Apollo 12 as second. 'First' specifies order; 'only once' specifies a count in a defined scope. Checking these phrases requires an ordering reference, a counting period, and an event definition. Order and total count are different checks.",
+      "claim_ids": [
+        "C1",
+        "C2"
+      ],
+      "evidence_ids": [
+        "E1",
+        "E5"
+      ]
+    },
+    {
+      "kind": "history",
+      "text": "Apollo 13 and 14 belonged to the same program. E3 says Fra Mauro was planned for Apollo 13 and reassigned to Apollo 14 after cancellation; E1 records Apollo 14's February 5, 1971 landing. Plans and sites are comparable, while execution differed. This comparison does not cover unresearched later periods or other programs.",
+      "claim_ids": [
+        "C2",
+        "C3"
+      ],
+      "evidence_ids": [
+        "E1",
+        "E3"
+      ]
+    },
+    {
+      "kind": "data",
+      "text": "E1 gives April 20 for Apollo 16 without a timezone; E4 gives April 21 at 02:23:35 UT and April 20 locally in the US. Day-level timelines should state the time standard. Both dates fall in 1972, leaving the annual count unchanged.",
+      "claim_ids": [
+        "C1",
+        "C2"
+      ],
+      "evidence_ids": [
+        "E1",
+        "E4"
+      ]
+    }
+  ],
+  "reasoning": [
+    {
+      "id": "R1",
+      "premise_ids": [
+        "E1",
+        "E2",
+        "E5"
+      ],
+      "claim_id": "C1",
+      "text": "Deduplicate NASA's listed missions under the same crewed lunar landing-and-return definition: 11, 12, 14, 15, 16, 17. Annual counts 2, 0, 2, 2 sum to six. This computes records; it does not vote by website count.",
+      "kind": "data"
+    },
+    {
+      "id": "R2",
+      "premise_ids": [
+        "E1",
+        "E4"
+      ],
+      "claim_id": "C2",
+      "text": "'No success after the first' is universal. Five recorded later landings, including Apollo 12, are specific contrary cases. Direct mission records are available; historical analogy need not substitute for them.",
+      "kind": "logic"
+    },
+    {
+      "id": "R3",
+      "premise_ids": [
+        "E1",
+        "E3"
+      ],
+      "claim_id": "C3",
+      "text": "NASA separately describes Apollo 13's cancelled landing and rescued crew. Under the surface-landing definition it is excluded; that failure does not erase other recorded successes.",
+      "kind": "history"
+    },
+    {
+      "id": "R4",
+      "premise_ids": [
+        "E1",
+        "E4"
+      ],
+      "claim_id": "C1",
+      "text": "Apollo 16's dedicated source gives April 21 UT and April 20 locally. Selecting UT resolves the day-level display, while both the annual and total counts remain unchanged.",
+      "kind": "data"
+    }
+  ],
+  "questions": [
+    "Does 'Moon landing' mean a crewed surface landing, a lunar orbit, a robotic landing, or a launch toward the Moon? These units cannot be mixed.",
+    "Investigating 1972 to the present needs a separate study with a cutoff date, not extrapolation from this example.",
+    "Should non-NASA original observations, sample research, or independent archives be added to assess source independence?",
+    "For exact landing times, use timezone-labelled records and distinguish lunar landing from Earth splashdown."
+  ],
+  "summary": {
+    "text": "Within Apollo in 1969–1972, NASA records list six successful crewed lunar surface landings: Apollo 11, 12, 14, 15, 16, and 17. Apollo 11's 'first' does not mean 'only'; five followed. Apollo 13's landing was cancelled and is excluded. This finding covers that period only and makes no judgment about later mission totals. This saved demonstration judgment belongs only in AI-summary mode.",
+    "verdict": "Within the stated Apollo period, the claim conflicts with the listed records",
+    "caveats": [
+      "NASA sources share one institutional provenance; internal cross-checks are not independent-institution verification.",
+      "This example was saved after development-time online checks, not generated by this click's live search.",
+      "Day-level dates require timezones; Apollo 16 uses April 21 UT from its dedicated page.",
+      "The conclusion concerns only stated mission counts/types, not other disputes or present all-history totals."
+    ],
+    "evidence_ids": [
+      "E1",
+      "E2",
+      "E3",
+      "E4",
+      "E5"
+    ]
+  },
+  "search_log": [
+    {
+      "query": "\"Six of the missions\" \"Apollos 11, 12, 14, 15, 16, and 17\"",
+      "intent": "NASA-domain exact verification of six listed successes; four results were returned, with duplicate documents not counted independently.",
+      "provider": "web.run",
+      "result_count": 4,
+      "ran_at": "2026-10-09"
+    },
+    {
+      "query": "\"Apollo 16\" \"21 April 1972 UT 02:23:35\"",
+      "intent": "NASA-domain verification of Apollo 16's date/timezone; nine results returned, but only the opened dedicated NSSDCA page was used, not unrelated parameterized pages.",
+      "provider": "web.run",
+      "result_count": 9,
+      "ran_at": "2026-10-09"
+    }
+  ],
+  "language": "en",
+  "summary_language": "en",
+  "source_policy": "balanced",
+  "preferred_sources": []
+}

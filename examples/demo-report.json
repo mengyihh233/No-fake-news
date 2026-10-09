@@ -1,0 +1,494 @@
+{
+  "schema_version": "1.0",
+  "topic": "人类只成功登月过一次，后续再也没有载人登月。",
+  "mode": "evidence-only",
+  "depth": "standard",
+  "generated_at": "2026-10-09T09:14:38.996260+00:00",
+  "scope": "预置演示：开发过程中通过联网打开 NASA 官方页面逐条核验并手工编排；加载本文件不会触发新一轮搜索。这份报告只核查 1969—1972 年阿波罗计划阶段的载人月面着陆记录，不统计 1972 年以后的任何任务，也不就截至 2026 年的全历史总数作判断。“成功载人登月”在此指载人登月舱实际着陆月面并完成返航任务；首次着陆、后续着陆、绕月/飞掠、无人任务及返回地球的着陆分别处理。时间轴以月面着陆日为主，Apollo 13 例外以任务发射日定位并明确其后取消月面着陆。Apollo 16 采用专项来源明确列出的 UT 日期 1972-04-21。",
+  "limitations": [
+    "本文件是已联网核验的固定演示数据，不是用户当前输入后由本地程序实时搜索得到的结果。网页内容可能变化，实际研究应重新打开并核对。",
+    "五个来源均属于 NASA 机构资料，source_family 均标为 NASA-Apollo；它们是同一机构内部资料的相互核对，不能算五个独立机构的交叉确认。",
+    "这里核查任务次数和任务类型，未独立重新分析阿波罗原始遥测、岩样或全部通信录音；没有据此推导其他争议命题。",
+    "NSSDCA 阿波罗总览将 Apollo 16 着陆日写为 4 月 20 日，专项页面则明确列出 4 月 21 日 UT 和美国当地 4 月 20 日。时间轴采用专项页面的 UT 日期，年度次数不受该时区差别影响。",
+    "NASA 新版总览的 Apollo 14 段落将月面行走概述写在 January 1971；NSSDCA 任务清单明确列出 1 月 31 日发射、2 月 5 日着陆。本演示使用后者的着陆日，未把发射月份当作落月月份。",
+    "证据 excerpt 为中文忠实转述，不是逐字引文；context 指明原页面相关位置。相关正文已实际打开阅读，不把搜索摘要标成已读全文。",
+    "E1 附有开发时通过浏览器从原始 NASA 网页实际采集的完整截图，保留原图并计算 SHA-256。其他来源尚无截图；截图用于定位和复核采集时页面内容，不单独证明历史事件真实。",
+    "search_log 只列用于复核的两次关键精确检索，不是全部研究浏览记录；结果数是工具该次返回的条目数，不代表独立来源数。",
+    "年度次数是对所列任务条目的确定性计数，图表点附有精确摘录及纳入规则。程序验证计数与条目对应，不独立证明该清单涵盖全部任务；1970 年为所列成功任务零条。"
+  ],
+  "claims": [
+    {
+      "id": "C1",
+      "text": "在 1969—1972 年的阿波罗阶段，人类只成功完成过一次载人月面着陆。",
+      "kind": "fact",
+      "verdict": "与该阶段任务记录不符",
+      "analysis": "NSSDCA 明确列出 Apollo 11、12、14、15、16、17 六次实现载人登月并返回地球的任务；NASA 科学可视化和项目总览另列六次月面着陆。这里比较的是同一阶段、同一任务类型的次数。"
+    },
+    {
+      "id": "C2",
+      "text": "Apollo 11 首次着陆以后，到 1972 年末再也没有成功载人月面着陆。",
+      "kind": "fact",
+      "verdict": "有五次后续任务记录与此相反",
+      "analysis": "Apollo 12、14、15、16、17 的月面着陆发生在 Apollo 11 之后。只需一个符合定义的后续成功案例即可检验“再也没有”这一全称表述，任务清单提供了五个。"
+    },
+    {
+      "id": "C3",
+      "text": "Apollo 13 在 1970 年取消了原定月面着陆，不能计为一次成功载人月面着陆。",
+      "kind": "fact",
+      "verdict": "获得官方任务记录支持",
+      "analysis": "NASA 任务细节说明其原计划为第三次月面着陆，但氧气罐事故导致该目标取消，乘员安全返回。“successful failure”描述救援结果，不等于成功完成月面着陆。"
+    }
+  ],
+  "evidence": [
+    {
+      "id": "E1",
+      "title": "The Apollo Program (1963 - 1972)",
+      "url": "https://nssdc.gsfc.nasa.gov/planetary/lunar/apollo.html",
+      "publisher": "NASA Goddard Space Flight Center / NSSDCA",
+      "published_at": null,
+      "retrieved_at": "2026-10-09",
+      "source_type": "primary",
+      "content_kind": "full_text",
+      "excerpt": "中文忠实转述任务清单：\nApollo 11：1969-07-20 月面着陆并返航；\nApollo 12：1969-11-19 月面着陆并返航；\nApollo 14：1971-02-05 月面着陆并返航；\nApollo 15：1971-07-30 月面着陆并返航；\nApollo 16：1972-04-20 月面着陆并返航（总览未标时区）；\nApollo 17：1972-12-11 月面着陆并返航。\n清单另记 Apollo 13 因故障取消原定月面着陆，飞掠月球后返回地球。",
+      "context": "中文忠实转述。依据页面首段及 Apollo Lunar Missions 逐项任务列表；页面标注最后更新 2023-02-17。列表载有六次月面着陆日以及 Apollo 13 发射和返航日。页面还明确区分 Apollo 8、10 绕月与月面着陆。Apollo 16 日期使用 E4 的明确 UT 标注核对，不直接沿用本页未标时区的 4 月 20 日。",
+      "source_family": "NASA-Apollo",
+      "status": "retrieved",
+      "claim_ids": [
+        "C1",
+        "C2",
+        "C3"
+      ],
+      "screenshots": [
+        {
+          "url": "/captures/9a1467fb8e7f40ad98a3171026547881.jpg",
+          "captured_at": "2026-10-09T08:53:31.841516+00:00",
+          "sha256": "4106b91562ebb0c8dc2a2ec541ed381140d39d0c231f2a4b6d4fca83ffddb7f5",
+          "source_url": "https://nssdc.gsfc.nasa.gov/planetary/lunar/apollo.html"
+        }
+      ]
+    },
+    {
+      "id": "E2",
+      "title": "Apollo Landing Sites with Moon Phases",
+      "url": "https://science.nasa.gov/resource/apollo-landing-sites-with-moon-phases/",
+      "publisher": "NASA Science / Ernie Wright",
+      "published_at": "2019-11-14",
+      "retrieved_at": "2026-10-09",
+      "source_type": "primary",
+      "content_kind": "full_text",
+      "excerpt": "NASA 表示阿波罗任务在 1969—1972 年间着陆于六个月面地点；Apollo 12 与 14 之间间隔较长，是因为 Apollo 13 发生严重设备故障而未能着陆。",
+      "context": "中文忠实转述。依据标题下的前两段说明，正文明确给出时期、六个地点及 Apollo 13 例外；页面标注文章日期 2019-11-14，最后更新 2025-02-12。已读文字说明；未把视频内容声称为已逐帧验证。该可视化引用 NASA 的 Apollo by the Numbers 等资料，与 E1 不视为独立机构证据。",
+      "source_family": "NASA-Apollo",
+      "status": "retrieved",
+      "claim_ids": [
+        "C1",
+        "C2",
+        "C3"
+      ],
+      "screenshots": []
+    },
+    {
+      "id": "E3",
+      "title": "Apollo 13: Mission Details",
+      "url": "https://www.nasa.gov/missions/apollo/apollo-13-mission-details/",
+      "publisher": "NASA",
+      "published_at": "2009-07-08",
+      "retrieved_at": "2026-10-09",
+      "source_type": "primary",
+      "content_kind": "full_text",
+      "excerpt": "Apollo 13 原拟在 Fra Mauro 着陆；机上爆炸迫使其不着陆而绕过月球，该地点随后交给 Apollo 14。第三次月面着陆尝试因服务舱氧气罐破裂而中止。",
+      "context": "中文忠实转述。依据 Mission Objective 和 Mission Highlights 前部。文中将乘员获救称为 successful failure，同时明确原定月面着陆取消；不能把救援成功算入成功月面着陆次数。该页后部的 Landing 栏涉及返回地球，不可误作月面着陆。",
+      "source_family": "NASA-Apollo",
+      "status": "retrieved",
+      "claim_ids": [
+        "C1",
+        "C3"
+      ],
+      "screenshots": []
+    },
+    {
+      "id": "E4",
+      "title": "Apollo 16",
+      "url": "https://nssdc.gsfc.nasa.gov/planetary/lunar/apollo16info.html",
+      "publisher": "NASA Goddard Space Flight Center / NSSDCA",
+      "published_at": null,
+      "retrieved_at": "2026-10-09",
+      "source_type": "primary",
+      "content_kind": "full_text",
+      "excerpt": "Apollo 16 的专项记录明确列出月面着陆时刻为 1972 年 4 月 21 日 UT 02:23:35，并在括号内列出美国当地 4 月 20 日；着陆地点为 Descartes。",
+      "context": "中文忠实转述。依据页面标题下的任务日期栏，页面标注最后更新 2022-08-15。这里只采用原文明确给出的 UT 日期和时刻，不自行校正其括号内的时区缩写。日期差别影响日级时间轴显示，不影响 1972 年的着陆次数。",
+      "source_family": "NASA-Apollo",
+      "status": "retrieved",
+      "claim_ids": [
+        "C1",
+        "C2"
+      ],
+      "screenshots": []
+    },
+    {
+      "id": "E5",
+      "title": "The Apollo Program",
+      "url": "https://www.nasa.gov/the-apollo-program/",
+      "publisher": "NASA",
+      "published_at": null,
+      "retrieved_at": "2026-10-09",
+      "source_type": "primary",
+      "content_kind": "full_text",
+      "excerpt": "NASA 项目总览标示六次月面着陆任务；Apollo 11 为首次，Apollo 12 为第二次；月面活动日志记录 1969—1972 年间六组、每组两名宇航员的月面操作。",
+      "context": "中文忠实转述。依据页面开头 Lunar Landing Missions 数字、Apollo 11 / Apollo 12 小节及 Apollo Lunar Surface Journal 说明。该页面的 Apollo 14 月份概述存在与 E1 不一致之处，未用于建立具体着陆日期。官方来源同样需要核对具体口径，不能因为域名可信就无条件采纳每个细节。",
+      "source_family": "NASA-Apollo",
+      "status": "retrieved",
+      "claim_ids": [
+        "C1",
+        "C2"
+      ],
+      "screenshots": []
+    }
+  ],
+  "links": [
+    {
+      "from": "E1",
+      "to": "C1",
+      "relation": "contradicts",
+      "note": "同一任务清单列明六次符合本报告定义的任务；关系标注属于报告分析。"
+    },
+    {
+      "from": "E2",
+      "to": "C1",
+      "relation": "contradicts",
+      "note": "1969—1972 年六个着陆地点的说明用于核对次数；与 E1 属于同一机构资料。"
+    },
+    {
+      "from": "E5",
+      "to": "C1",
+      "relation": "contradicts",
+      "note": "项目总览的六次月面着陆数量用于交叉核对，具体日期仍以任务条目为准。"
+    },
+    {
+      "from": "E1",
+      "to": "C2",
+      "relation": "contradicts",
+      "note": "列明 Apollo 11 之后的 Apollo 12、14、15、16、17 月面着陆。"
+    },
+    {
+      "from": "E4",
+      "to": "C2",
+      "relation": "contradicts",
+      "note": "Apollo 16 是发生在首次之后的明确月面着陆案例，并注明 UT 日期。"
+    },
+    {
+      "from": "E3",
+      "to": "C3",
+      "relation": "supports",
+      "note": "任务目标与任务经过均明确取消原定月面着陆。"
+    },
+    {
+      "from": "E1",
+      "to": "C3",
+      "relation": "supports",
+      "note": "任务清单将 Apollo 13 标为飞掠返航并说明着陆取消。"
+    },
+    {
+      "from": "E3",
+      "to": "C1",
+      "relation": "qualifies",
+      "note": "一次未完成着陆的任务不应计入成功次数，也不能代表此后的所有任务。"
+    }
+  ],
+  "timeline": [
+    {
+      "date": "1969-07-20",
+      "title": "Apollo 11：月面着陆",
+      "detail": "在静海着陆。这是本阶段六次成功载人月面着陆记录中的第一次；与返地溅落日期分开记录。",
+      "evidence_ids": [
+        "E1",
+        "E5"
+      ]
+    },
+    {
+      "date": "1969-11-19",
+      "title": "Apollo 12：月面着陆",
+      "detail": "在风暴洋着陆，发生在 Apollo 11 之后；NASA 项目总览称其为第二次月面着陆。",
+      "evidence_ids": [
+        "E1",
+        "E5"
+      ]
+    },
+    {
+      "date": "1970-04-11",
+      "title": "Apollo 13：发射，后取消月面着陆",
+      "detail": "本节点采用任务发射日，不是月面着陆日。4 月 11—17 日任务中发生故障，取消原定着陆，飞掠月球并安全返航。不能计为成功月面着陆。",
+      "evidence_ids": [
+        "E1",
+        "E3"
+      ]
+    },
+    {
+      "date": "1971-02-05",
+      "title": "Apollo 14：月面着陆",
+      "detail": "在 Fra Mauro 着陆。NSSDCA 区分 1 月 31 日发射与 2 月 5 日着陆；不能混用两种日期。",
+      "evidence_ids": [
+        "E1",
+        "E3"
+      ]
+    },
+    {
+      "date": "1971-07-30",
+      "title": "Apollo 15：月面着陆",
+      "detail": "在 Hadley Rille 地区着陆；年度计数归入 1971 年。",
+      "evidence_ids": [
+        "E1"
+      ]
+    },
+    {
+      "date": "1972-04-21",
+      "title": "Apollo 16：月面着陆（UT 日期）",
+      "detail": "在 Descartes 着陆。专项记录列 4 月 21 日 UT 02:23:35，对应页面所列美国当地 4 月 20 日；本时间轴使用明确的 UT 日期。",
+      "evidence_ids": [
+        "E1",
+        "E4"
+      ]
+    },
+    {
+      "date": "1972-12-11",
+      "title": "Apollo 17：月面着陆",
+      "detail": "在 Taurus-Littrow 着陆。这是本报告限定的阿波罗阶段内第六次成功载人月面着陆；未由此判断任何后续年代的任务。",
+      "evidence_ids": [
+        "E1",
+        "E5"
+      ]
+    }
+  ],
+  "charts": [
+    {
+      "title": "1969—1972 年阿波罗成功载人月面着陆次数",
+      "unit": "次任务",
+      "kind": "bar",
+      "points": [
+        {
+          "label": "1969",
+          "value": 2,
+          "evidence_ids": [
+            "E1",
+            "E5"
+          ],
+          "calculation": {
+            "operation": "count",
+            "source_quotes": [
+              "Apollo 11：1969-07-20 月面着陆并返航",
+              "Apollo 12：1969-11-19 月面着陆并返航"
+            ],
+            "description": "从 E1 所列阿波罗成功载人月面着陆任务条目中，按着陆年份纳入本年度记录并计数；仅统计所列资料，清单完整性须另行核对。"
+          }
+        },
+        {
+          "label": "1970",
+          "value": 0,
+          "evidence_ids": [
+            "E1",
+            "E3"
+          ],
+          "calculation": {
+            "operation": "count",
+            "source_quotes": [],
+            "description": "从 E1 所列阿波罗成功载人月面着陆任务条目中，按着陆年份纳入本年度记录并计数；仅统计所列资料，清单完整性须另行核对。"
+          }
+        },
+        {
+          "label": "1971",
+          "value": 2,
+          "evidence_ids": [
+            "E1"
+          ],
+          "calculation": {
+            "operation": "count",
+            "source_quotes": [
+              "Apollo 14：1971-02-05 月面着陆并返航",
+              "Apollo 15：1971-07-30 月面着陆并返航"
+            ],
+            "description": "从 E1 所列阿波罗成功载人月面着陆任务条目中，按着陆年份纳入本年度记录并计数；仅统计所列资料，清单完整性须另行核对。"
+          }
+        },
+        {
+          "label": "1972",
+          "value": 2,
+          "evidence_ids": [
+            "E1",
+            "E4",
+            "E5"
+          ],
+          "calculation": {
+            "operation": "count",
+            "source_quotes": [
+              "Apollo 16：1972-04-20 月面着陆并返航（总览未标时区）",
+              "Apollo 17：1972-12-11 月面着陆并返航"
+            ],
+            "description": "从 E1 所列阿波罗成功载人月面着陆任务条目中，按着陆年份纳入本年度记录并计数；仅统计所列资料，清单完整性须另行核对。"
+          }
+        }
+      ],
+      "note": "按 E1 完整的成功任务清单逐年计数：1969 年 Apollo 11/12，1971 年 14/15，1972 年 16/17，共 2+0+2+2=6。1970 年的 Apollo 13 取消月面着陆，计为 0。单位为成功着陆任务，不是人数、发射次数、绕月次数或无人着陆次数；图表为本报告依据任务记录计算的汇总，非 NASA 原图。"
+    }
+  ],
+  "comparisons": [
+    {
+      "case": "同类后续任务：Apollo 12 与 Apollo 11",
+      "date": "1969-07-20 / 1969-11-19",
+      "similarities": "均属于阿波罗计划的载人月面着陆并返航任务，符合相同计数口径。",
+      "differences": "Apollo 11 为首次、着陆于静海；Apollo 12 为后续任务、着陆于风暴洋。",
+      "limits": "这是同一阶段真实任务的直接比较，用于核对“首次”与“仅一次”的区别；不是依据外观相似或历史类比推断事件真假，不能推广为对其他阶段任务数量的判断。",
+      "evidence_ids": [
+        "E1",
+        "E5"
+      ]
+    },
+    {
+      "case": "任务结果区别：Apollo 13 与成功着陆任务",
+      "date": "1970-04-11—1970-04-17",
+      "similarities": "均为阿波罗载人飞行任务，Apollo 13 也有原定月面着陆目标。",
+      "differences": "Apollo 13 因故障取消着陆，安全返航；Apollo 11、12、14、15、16、17 实际完成月面着陆。乘员获救与完成原定月面任务是不同结果。",
+      "limits": "Apollo 13 未着陆只说明该次任务结果。不能从单次失败推导其前后其他任务均未成功，也不能将 successful failure 这一称谓解释为成功登月。",
+      "evidence_ids": [
+        "E1",
+        "E3"
+      ]
+    }
+  ],
+  "observations": [
+    {
+      "kind": "data",
+      "text": "按 E1 所列月面着陆并返航任务去重后，以任务为单位、按月面着陆年份计数：1969 年 2 次（11、12），1970 年 0 次，1971 年 2 次（14、15），1972 年 2 次（16、17），合计 6 次。1970 年的 0 表示该清单没有列出本年度成功着陆条目，不表示没有载人飞行任务；E3 记录了 Apollo 13 的取消着陆及返航。这里没有将发射次数、人数、绕月或无人任务混入同一单位。",
+      "claim_ids": [
+        "C1",
+        "C2",
+        "C3"
+      ],
+      "evidence_ids": [
+        "E1",
+        "E3"
+      ]
+    },
+    {
+      "kind": "logic",
+      "text": "E5 分别使用首次和第二次描述 Apollo 11 与 Apollo 12。“首次”限定事件的先后顺序，“仅一次”限定指定范围内的事件总次数。核对这两种表述，需要分别明确排序的参照范围、次数的统计期间以及事件定义；先后顺序与总次数是不同的核查项目。",
+      "claim_ids": [
+        "C1",
+        "C2"
+      ],
+      "evidence_ids": [
+        "E1",
+        "E5"
+      ]
+    },
+    {
+      "kind": "history",
+      "text": "Apollo 13 与 Apollo 14 均属于阿波罗计划，E3 说明前者原定在 Fra Mauro 着陆，取消着陆后该地点交给后者；E1 列出后者于 1971 年 2 月 5 日在该地区着陆。两项任务可比较相近计划和着陆地点，实际执行结果则分别为取消着陆后返航与月面着陆后返航。这是同一计划内的任务记录对照，其可比范围不包括未经本报告研究的后续年代或其他计划。",
+      "claim_ids": [
+        "C2",
+        "C3"
+      ],
+      "evidence_ids": [
+        "E1",
+        "E3"
+      ]
+    },
+    {
+      "kind": "data",
+      "text": "Apollo 16 的 E1 总览条目写 1972 年 4 月 20 日且未标时区，E4 专项页同时给出 4 月 21 日 UT 02:23:35 与美国当地 4 月 20 日。该日期差别需要在日级时间轴中标明口径；按任一上述日期归年，均属于 1972 年，所以本报告的年度计数不因该差别改变。",
+      "claim_ids": [
+        "C1",
+        "C2"
+      ],
+      "evidence_ids": [
+        "E1",
+        "E4"
+      ]
+    }
+  ],
+  "reasoning": [
+    {
+      "id": "R1",
+      "premise_ids": [
+        "E1",
+        "E2",
+        "E5"
+      ],
+      "claim_id": "C1",
+      "text": "可复核的数据归纳：将 NASA 任务清单中符合相同“成功载人月面着陆并返航”定义的任务去重，得到 11、12、14、15、16、17 六项。按年计数为 2、0、2、2；总和为 6。这是对列举记录的计算，不是对网站数量投票。",
+      "kind": "data"
+    },
+    {
+      "id": "R2",
+      "premise_ids": [
+        "E1",
+        "E4"
+      ],
+      "claim_id": "C2",
+      "text": "可复核的逻辑关系：“首次以后再无成功案例”属于全称断言。Apollo 12 等五次后续月面着陆记录是与该断言相反的具体案例；这里无需用历史类比替代直接任务证据。",
+      "kind": "logic"
+    },
+    {
+      "id": "R3",
+      "premise_ids": [
+        "E1",
+        "E3"
+      ],
+      "claim_id": "C3",
+      "text": "任务分类：NASA 将 Apollo 13 的取消着陆与安全救回乘员分别叙述。按月面着陆口径，它不进入成功计数；一次失败也不抹除清单中其余任务的成功记录。",
+      "kind": "history"
+    },
+    {
+      "id": "R4",
+      "premise_ids": [
+        "E1",
+        "E4"
+      ],
+      "claim_id": "C1",
+      "text": "日期口径核对：Apollo 16 的专项来源同时列出 UT 4 月 21 日和美国当地 4 月 20 日。采用 UT 日级日期解决时间轴显示差别，年度仍为 1972，故年度次数和总数不变。",
+      "kind": "data"
+    }
+  ],
+  "questions": [
+    "你所说的“登月”是载人月面着陆、绕月飞行、无人探测器着陆，还是泛指发射月球任务？不同口径不能直接混算。",
+    "若想核查 1972 年以后直到今天的情况，需要另开带明确截止日期的研究，不能由本演示直接外推。",
+    "是否需要进一步加入 NASA 以外机构的原始观测、科研样本研究或独立档案来检验来源独立性？",
+    "如需审核具体着陆时间，应使用标有时区的任务记录，并分清月面着陆与返回地球溅落。"
+  ],
+  "summary": {
+    "text": "在明确限定的 1969—1972 年阿波罗阶段，NASA 任务记录列出六次成功载人月面着陆：Apollo 11、12、14、15、16、17。Apollo 11 的“首次”不能改写为“仅一次”；它之后还有五次。Apollo 13 原定着陆取消，乘员安全返航，未计入六次。本结论只覆盖这段历史，不评价 1972 年以后的动态任务总数。此段为预置演示结论，只应在“AI 生成总结”模式显示。",
+    "verdict": "在本报告限定的阿波罗阶段，该论断与所列任务记录不符",
+    "caveats": [
+      "来源均来自 NASA，同一机构内核对不等于多家独立机构验证。",
+      "本报告是开发时联网核验后保存的演示，不是本次点击触发的实时联网研究。",
+      "日级日期注意时区；Apollo 16 使用专项页面的 UT 4 月 21 日。",
+      "只能对明示范围内的次数与任务类型作结论，不推导其他争议或当前全历史总数。"
+    ],
+    "evidence_ids": [
+      "E1",
+      "E2",
+      "E3",
+      "E4",
+      "E5"
+    ]
+  },
+  "search_log": [
+    {
+      "query": "\"Six of the missions\" \"Apollos 11, 12, 14, 15, 16, and 17\"",
+      "intent": "用 NASA 域名过滤精确复核六次成功任务清单；该次返回 4 条，其中重复文档不按独立来源计数。",
+      "provider": "web.run",
+      "result_count": 4,
+      "ran_at": "2026-10-09"
+    },
+    {
+      "query": "\"Apollo 16\" \"21 April 1972 UT 02:23:35\"",
+      "intent": "用 NASA 域名过滤核对 Apollo 16 日级日期与时区；该次返回 9 条，只采用已打开的 NSSDCA 专项页，未采用含无关查询参数的搜索页。",
+      "provider": "web.run",
+      "result_count": 9,
+      "ran_at": "2026-10-09"
+    }
+  ],
+  "language": "zh-CN",
+  "summary_language": "zh-CN",
+  "source_policy": "balanced",
+  "preferred_sources": []
+}

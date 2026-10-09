@@ -1,0 +1,7 @@
+fastapi>=0.115,<1
+uvicorn>=0.30,<1
+httpx>=0.27,<1
+pydantic>=2.9,<3
+pytest>=8,<10
+# Optional screenshot support: pip install playwright
+# Then: python -m playwright install chromium

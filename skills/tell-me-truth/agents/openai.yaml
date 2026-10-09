@@ -1,0 +1,4 @@
+interface:
+  display_name: "tell me truth"
+  short_description: "来源核查与中性分析 / Evidence checks / 出典検証・中立分析"
+  default_prompt: "使用 $tell-me-truth 核查输入；沿用指定或会话语言（简体中文/English/日本語），默认资料自行判断与标准深度。Check the input with cited neutral analysis; verdicts optional. 出典付きの分析を行い、判定は任意にします。"
