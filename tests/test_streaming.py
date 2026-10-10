@@ -8,7 +8,9 @@ from fastapi.testclient import TestClient
 import app as application
 from truth_backend import streaming
 from truth_backend.progress import PROGRESS_CALLBACK, emit_progress
+from truth_backend.models import ResearchRequest
 from truth_backend.security import ServiceError
+from starlette.requests import ClientDisconnect
 
 
 async def unbounded(operation, timeout):
@@ -238,5 +240,61 @@ def test_asgi_disconnect_cancels_research_after_body_was_validated(monkeypatch):
         await asyncio.wait_for(task, 1)
         assert stopped.is_set()
         assert not any(b"event: result" in message.get("body", b"") for message in sent)
+
+    asyncio.run(scenario())
+
+
+@pytest.mark.parametrize("termination", ["disconnect", "send_error", "external_cancel"])
+def test_response_exit_closes_suspended_generator_before_returning(monkeypatch, termination):
+    """Cancellation at send, after yield, must not depend on generator GC timing."""
+    async def scenario():
+        started, stopped, sending = asyncio.Event(), asyncio.Event(), asyncio.Event()
+        received = asyncio.Queue()
+        monkeypatch.setattr(application, "busy", asyncio.Semaphore(2))
+
+        async def operation(request):
+            started.set()
+            try:
+                await asyncio.Event().wait()
+            finally:
+                await asyncio.sleep(0.02)
+                stopped.set()
+
+        async def send(message):
+            if message["type"] == "http.response.body" and message.get("body"):
+                sending.set()
+                if termination == "send_error":
+                    raise OSError("Offline disconnected transport")
+                await asyncio.Event().wait()
+
+        monkeypatch.setattr(application, "research", operation)
+        response = await application.stream_research(ResearchRequest(topic="Offline suspended generator test"))
+        # Retaining the iterator deliberately prevents finalization from masking
+        # missing response-owned cleanup on a particular Python version.
+        iterator = response.body_iterator
+        before = set(asyncio.all_tasks())
+        scope = {"type": "http", "asgi": {"version": "3.0", "spec_version": "2.0" if termination == "disconnect" else "2.4"}}
+        task = asyncio.create_task(response(scope, received.get, send))
+        try:
+            await asyncio.wait_for(started.wait(), 1)
+            await asyncio.wait_for(sending.wait(), 1)
+            if termination == "disconnect":
+                await received.put({"type": "http.disconnect"})
+                await asyncio.wait_for(task, 1)
+            else:
+                if termination == "external_cancel":
+                    task.cancel()
+                with pytest.raises(asyncio.CancelledError if termination == "external_cancel" else ClientDisconnect):
+                    await asyncio.wait_for(task, 1)
+            assert stopped.is_set()
+            assert iterator.ag_frame is None
+            assert not [candidate for candidate in asyncio.all_tasks() - before if not candidate.done()]
+        finally:
+            # Make the failing pre-fix regression safe for loop shutdown, while
+            # the assertions above require cleanup before the response returns.
+            if not task.done():
+                task.cancel()
+                await asyncio.gather(task, return_exceptions=True)
+            await iterator.aclose()
 
     asyncio.run(scenario())

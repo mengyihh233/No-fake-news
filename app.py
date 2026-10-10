@@ -12,7 +12,7 @@ from urllib.parse import urlsplit
 import anyio
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, Response
 
 from truth_backend.captures import CAPTURE_DIR, screenshot_status
 from truth_backend.budgets import DEPTH_BUDGETS
@@ -24,7 +24,7 @@ from truth_backend.research import research, summarize
 from truth_backend.security import ServiceError
 from truth_backend.local_config import load_local_config
 from truth_backend.providers import resolve_search
-from truth_backend.streaming import research_events
+from truth_backend.streaming import ResearchStreamingResponse, research_events
 from truth_backend.review import review_report
 from truth_backend.review_targets import REVIEW_CAPACITIES
 from truth_backend.models import SearchConfig
@@ -198,7 +198,7 @@ async def do_research(request: ResearchRequest, raw_request: Request):
 
 @app.post("/api/research/stream")
 async def stream_research(request: ResearchRequest):
-    return StreamingResponse(
+    return ResearchStreamingResponse(
         research_events(lambda: research(request), bounded, DEPTH_BUDGETS[request.depth]["timeout_seconds"], request.language),
         media_type="text/event-stream", headers={"X-Accel-Buffering": "no"})
 

@@ -6,6 +6,8 @@ import json
 from collections.abc import AsyncIterator, Callable
 
 import anyio
+from starlette.responses import StreamingResponse
+from starlette.types import Receive, Scope, Send
 
 from .i18n import error_message
 from .progress import PROGRESS_CALLBACK, emit_progress
@@ -14,6 +16,22 @@ from .security import ServiceError
 
 HEARTBEAT_SECONDS = 10
 MAX_BUFFERED_EVENTS = 64
+
+
+class ResearchStreamingResponse(StreamingResponse):
+    """Own the research iterator's shutdown, including cancellation during send."""
+
+    async def __call__(self, scope: Scope, receive: Receive, send: Send) -> None:
+        try:
+            await super().__call__(scope, receive, send)
+        finally:
+            # The streaming consumer/task group has exited, so aclose cannot race
+            # an active anext. A cancelled send can leave the iterator suspended
+            # at yield; async-for alone does not close it or await its cleanup.
+            close = getattr(self.body_iterator, "aclose", None)
+            if close is not None:
+                with anyio.CancelScope(shield=True):
+                    await close()
 
 
 def sse(event: str, data: dict) -> str:
