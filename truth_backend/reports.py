@@ -5,10 +5,13 @@ import re
 from copy import deepcopy
 from decimal import Decimal, InvalidOperation
 
+from pydantic import ValidationError
+
 from .models import (Analysis, Chart, ChartPoint, Comparison, Evidence, Observation,
                      QuoteCitation, Reasoning, Report, Summary, TimelineItem)
 from .citations import excerpt_metadata, locate_quote, validate_citations
 from .quote_catalog import iter_analysis_quote_references
+from .review_targets import reject_review, validate_citation_review
 from .security import ServiceError, check_url_shape
 from .i18n import tr
 
@@ -48,7 +51,7 @@ def validate_count(point: ChartPoint, evidence: dict[str, Evidence]) -> bool:
 
 
 def validate_references(report: Report) -> None:
-    strict_citations = report.schema_version == "1.1"
+    strict_citations = report.schema_version in {"1.1", "1.2"}
     claims = {claim.id for claim in report.claims}
     evidence = {item.id: item for item in report.evidence}
     if len(claims) != len(report.claims) or len(evidence) != len(report.evidence):
@@ -118,6 +121,7 @@ def validate_references(report: Report) -> None:
     for search in report.search_log:
         if not set(search.gap_claim_ids).issubset(claims):
             reject("补充搜索关联了不存在的论断 ID。")
+    validate_citation_review(report)
 
 
 def validate_analysis(analysis: Analysis, report: Report, *, require_citations: bool | None = None) -> None:
@@ -125,7 +129,7 @@ def validate_analysis(analysis: Analysis, report: Report, *, require_citations: 
         reject("引文目录 ID 尚未由服务器解析，不能直接生成报告。")
     evidence = {item.id: item for item in report.evidence}
     claims = {claim.id for claim in report.claims}
-    strict_citations = report.schema_version == "1.1" if require_citations is None else require_citations
+    strict_citations = report.schema_version in {"1.1", "1.2"} if require_citations is None else require_citations
     assessments = set()
     for assessment in analysis.claim_assessments:
         if assessment.claim_id not in claims or assessment.claim_id in assessments:
@@ -197,8 +201,10 @@ def validate_analysis(analysis: Analysis, report: Report, *, require_citations: 
 def apply_analysis(report: Report, analysis: Analysis, *, judgment_only: bool = False,
                    require_citations: bool | None = None) -> Report:
     validate_analysis(analysis, report, require_citations=require_citations)
-    strict_citations = report.schema_version == "1.1" if require_citations is None else require_citations
+    strict_citations = report.schema_version in {"1.1", "1.2"} if require_citations is None else require_citations
     result = report.model_copy(deep=True)
+    # A new analysis changes statements or judgments and invalidates prior advice.
+    result.citation_review = None
     evidence = {item.id: item for item in result.evidence}
     if not judgment_only:
         for item in result.evidence:
@@ -258,6 +264,12 @@ def apply_analysis(report: Report, analysis: Analysis, *, judgment_only: bool = 
 def public_report(report: Report | dict, mode: str | None = None) -> dict:
     """Allowlist export: evidence-only never carries a hidden verdict payload."""
     data = report.model_dump(by_alias=True) if isinstance(report, Report) else deepcopy(report)
+    if data.get("citation_review") is not None:
+        try:
+            validated = report if isinstance(report, Report) else Report.model_validate(data)
+        except ValidationError:
+            reject_review(data.get("language", "zh-CN"))
+        validate_references(validated)
     effective_mode = mode or data["mode"]
     data["mode"] = effective_mode
     language = data.get("language", "zh-CN")

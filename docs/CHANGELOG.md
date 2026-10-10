@@ -1,5 +1,37 @@
 # Changelog / 更新记录 / 変更履歴
 
+## 0.3.0 — 2026-10-10
+
+### English
+
+- Real SSE research stages and actual completed-query/retrieval counts, including unknown or changing totals; no simulated percentage, ETA, or streamed model tokens.
+- Canceling stops subsequent local tasks; already-dispatched provider calls and fees cannot be recalled or refunded by this app.
+- Optional AI review of citation relationships for existing AI-summary `1.1` / `1.2` reports: one extra call to the same configured model, no new search/retrieval, and an upfront cost explanation.
+- Depth caps of 12 / 24 / 40 targets and a 120,000-codepoint input limit; all omissions remain explicitly unreviewed. AI advice is separate from exact matching and is not independent verification or a truth score.
+- Schema `1.2` attaches report-bound review snapshots and original citation subsets. Import/export and the standalone renderer validate target hashes, exact locators, selection, and counts; evidence-only projection removes the entire review.
+- Three-language roadmap separates planned improvements from shipped features.
+- Three-language UI, README, evidence boundaries, Skill references, and offline review display. Existing `1.0` / `1.1` remain readable; standalone hosts must not invent server metadata.
+
+### 简体中文
+
+- SSE 展示真实研究阶段及已完成查询/抓取计数，允许未知或变化总数，不模拟百分比、剩余时间或模型逐字流。
+- 中止停止本机后续任务；应用不能撤回已发给供应商的调用或保证退费。
+- 已有 AI 总结 `1.1` / `1.2` 可选引文关系复核：同一配置模型额外调用一次，不新增搜索/抓取，事前说明可能收费。
+- 深度上限 12 / 24 / 40 目标及 120,000 码点输入限制，全部省略项明确未复核；AI 建议与逐字匹配分开，不是独立核实或真假评分。
+- `1.2` 附报告快照绑定的复核及既有引文子集；导入/导出、离线渲染核验目标哈希、精确定位、选集和计数；资料模式完整删除复核。
+- 三语路线图区分后续优化规划与已发布功能。
+- 界面、README、证据边界、Skill 参考和离线展示同步三语。旧 `1.0` / `1.1` 可读，独立宿主不得编造服务器元数据。
+
+### 日本語
+
+- SSE で実際の調査段階と完了した検索・取得件数を表示。総数不明・変動を扱い、百分率、残り時間、モデルの逐語出力を模擬しません。
+- 中断は以後のローカル処理を停止しますが、送信済みの呼出しの取消しや返金は保証しません。
+- 既存 AI 要約 `1.1` / `1.2` に任意の引用関係確認。同じ設定のモデルを追加一回呼び、再検索・再取得せず、料金の可能性を事前に説明します。
+- 深さ別の 12 / 24 / 40 対象と 120,000 コードポイントの入力上限。省略はすべて未確認で、AI の助言は文字一致と別であり、独立検証・真偽の点数ではありません。
+- `1.2` はレポート快照に結ぶ確認と既存引用の部分集合を保持。読込・書出し・独立描画で対象ハッシュ、精確位置、選択、件数を検査し、資料モードは確認全体を削除します。
+- 三言語のロードマップは今後の計画と提供済み機能を区別します。
+- UI、README、証拠の限界、Skill 参照、オフライン表示を三言語で更新。既存 `1.0` / `1.1` も読め、独立ホストはサーバー情報を捏造しません。
+
 ## 0.2.0 — 2026-10-10
 
 ### English

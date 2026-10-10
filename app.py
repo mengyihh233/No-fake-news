@@ -3,30 +3,35 @@ from __future__ import annotations
 
 import asyncio
 import ipaddress
+import inspect
 import json
 import os
 from pathlib import Path
 from urllib.parse import urlsplit
 
+import anyio
 from fastapi import FastAPI, Request
 from fastapi.exceptions import RequestValidationError
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, JSONResponse, Response, StreamingResponse
 
 from truth_backend.captures import CAPTURE_DIR, screenshot_status
 from truth_backend.budgets import DEPTH_BUDGETS
 from truth_backend.deadlines import REQUEST_DEADLINE
-from truth_backend.models import Mode, Language, Report, ResearchRequest, SummarizeRequest
+from truth_backend.models import Mode, Language, Report, ResearchRequest, SummarizeRequest, ReviewRequest
 from truth_backend.i18n import SUPPORTED_LANGUAGES, error_message
 from truth_backend.reports import public_report, validate_references
 from truth_backend.research import research, summarize
 from truth_backend.security import ServiceError
 from truth_backend.local_config import load_local_config
 from truth_backend.providers import resolve_search
+from truth_backend.streaming import research_events
+from truth_backend.review import review_report
+from truth_backend.review_targets import REVIEW_CAPACITIES
 from truth_backend.models import SearchConfig
 
 
 ROOT = Path(__file__).resolve().parent
-app = FastAPI(title="No fake news", version="0.2.0", docs_url="/api/docs", redoc_url=None)
+app = FastAPI(title="No fake news", version="0.3.0", docs_url="/api/docs", redoc_url=None)
 busy = asyncio.Semaphore(2)
 
 
@@ -102,7 +107,7 @@ async def home():
 
 @app.get("/assets/{name}")
 async def asset(name: str, request: Request):
-    if name not in {"app.js", "styles.css", "i18n.js", "workspace.js", "workbench.css"}:
+    if name not in {"app.js", "styles.css", "i18n.js", "workspace.js", "workbench.css", "stream.js", "review.js"}:
         return JSONResponse({"error": {"code": "not_found", "message": error_message("not_found", "资源不存在。", request.state.language)}}, status_code=404)
     return FileResponse(ROOT / "frontend" / name)
 
@@ -123,7 +128,7 @@ async def capture(name: str, request: Request):
 
 @app.get("/api/health")
 async def health(language: Language = "zh-CN"):
-    return {"status": "ok", "version": "0.2.0", "local_only": True,
+    return {"status": "ok", "version": "0.3.0", "local_only": True,
             "search_providers": ["deepseek", "tavily", "brave"], "ai_protocol": "openai-chat-completions",
             "default_search_provider": os.getenv("TRUTH_SEARCH_PROVIDER", "tavily") if os.getenv("TRUTH_SEARCH_PROVIDER", "tavily") in {"deepseek", "tavily", "brave"} else "tavily",
             "configured": {"ai_base_url": bool(os.getenv("TRUTH_AI_BASE_URL")),
@@ -136,29 +141,76 @@ async def health(language: Language = "zh-CN"):
                               "credential_kinds": ["basic", "cookie", "bearer"], "credentials_persisted": False,
                               "authenticated_screenshots": False, "form_login": False},
             "max_sources": 24, "max_queries": 10, "depths": DEPTH_BUDGETS,
-            "report_schema": "1.1", "adaptive_search_default": False, "max_analysis_repair_calls": 1}
+            "report_schema": "1.1", "supported_report_schemas": ["1.0", "1.1", "1.2"],
+            "research_stream": True, "adaptive_search_default": False, "max_analysis_repair_calls": 1,
+            "citation_review": {"modes": ["ai-summary"], "capacities": REVIEW_CAPACITIES,
+                                "max_model_calls": 1, "timeout_seconds": 120}}
 
 
 async def bounded(operation, timeout_seconds=180):
     token = REQUEST_DEADLINE.set(asyncio.get_running_loop().time() + timeout_seconds)
+    started = False
     try:
         async with asyncio.timeout(timeout_seconds):
             async with busy:
+                started = True
                 return await operation
     except TimeoutError:
         raise ServiceError("research_timeout", f"处理超过 {timeout_seconds} 秒；未返回不完整或替代报告，请稍后重试。", 504) from None
     finally:
         REQUEST_DEADLINE.reset(token)
+        if not started and inspect.iscoroutine(operation):
+            operation.close()
+
+
+async def bounded_connected(request: Request, factory, timeout_seconds=180):
+    """Stop nonstreaming paid work when its client leaves, including queued work."""
+    async def run():
+        return await bounded(factory(), timeout_seconds)
+
+    async def disconnected():
+        # FastAPI and local_guard have consumed the validated request body.
+        while True:
+            if (await request.receive())["type"] == "http.disconnect":
+                return
+
+    operation = asyncio.create_task(run())
+    listener = asyncio.create_task(disconnected())
+    try:
+        done, _ = await asyncio.wait({operation, listener}, return_when=asyncio.FIRST_COMPLETED)
+        if operation in done:
+            return await operation
+        # There is no connected client to receive a new public error payload.
+        return Response(status_code=499)
+    finally:
+        # Starlette's cancellation scopes must not interrupt asynchronous cleanup.
+        with anyio.CancelScope(shield=True):
+            for task in (operation, listener):
+                if not task.done() and not task.cancelling():
+                    task.cancel()
+            await asyncio.gather(operation, listener, return_exceptions=True)
 
 
 @app.post("/api/research")
-async def do_research(request: ResearchRequest):
-    return await bounded(research(request), DEPTH_BUDGETS[request.depth]["timeout_seconds"])
+async def do_research(request: ResearchRequest, raw_request: Request):
+    return await bounded_connected(raw_request, lambda: research(request), DEPTH_BUDGETS[request.depth]["timeout_seconds"])
+
+
+@app.post("/api/research/stream")
+async def stream_research(request: ResearchRequest):
+    return StreamingResponse(
+        research_events(lambda: research(request), bounded, DEPTH_BUDGETS[request.depth]["timeout_seconds"], request.language),
+        media_type="text/event-stream", headers={"X-Accel-Buffering": "no"})
 
 
 @app.post("/api/summarize")
-async def do_summarize(request: SummarizeRequest):
-    return await bounded(summarize(request))
+async def do_summarize(request: SummarizeRequest, raw_request: Request):
+    return await bounded_connected(raw_request, lambda: summarize(request))
+
+
+@app.post("/api/review")
+async def do_review(request: ReviewRequest, raw_request: Request):
+    return await bounded_connected(raw_request, lambda: review_report(request), 120)
 
 
 @app.get("/api/demo")

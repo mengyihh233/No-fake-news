@@ -19,6 +19,8 @@ Use the **local web app** with your own AI/search APIs, or install the **`tell-m
 | Optional judgment | Evidence only retains data, logic, and historical analysis; AI summary adds conditional judgments and explicit reasoning. |
 | Adjustable depth | Brief / standard / deep change actual research budgets, independently of the judgment option. |
 | Traceable evidence | Linked claims and sources, excerpts, lineage, charts and source tables, timelines, historical comparisons, unresolved questions. |
+| Research progress | Live stage events show completed searches and retrieval attempts; no estimated percentage or token streaming. |
+| Optional citation review | Ask the configured AI to inspect quotation relationships in an existing AI-summary report, with explicit cost and coverage limits. |
 | Exact quotations | Inspect original quotes, nearby context, extract positions, and fingerprints; textual presence is checked, semantic support remains open to review. |
 | Supplemental retrieval | Optional keyword/family gap checks trigger at most 1 / 2 / 2 extra searches, within existing source and time limits. |
 | Documents and tables | Text-based PDF, HTML tables, CSV, and TSV with bounded extraction and explicit truncation/access caveats. |
@@ -28,7 +30,7 @@ Use the **local web app** with your own AI/search APIs, or install the **`tell-m
 | Three languages | 简体中文 / English / 日本語 for UI, new narrative, export labels, CLI, Skill instructions, and documentation. Original excerpts stay unchanged. |
 | Your own model | OpenAI-compatible Chat Completions; DeepSeek native search reuses its official key, or choose Tavily / Brave. |
 
-Design rationale and diagram references: [Design notes](docs/DESIGN.md).
+Design rationale and diagram references: [Design notes](docs/DESIGN.md). Planned improvements and contribution ideas: [Roadmap, in three languages](docs/ROADMAP.md).
 
 ![A claim connected to its sources and cited comparisons](examples/evidence-map.en.jpg)
 
@@ -91,6 +93,10 @@ Evidence-only mode removes verdicts, summary, and evaluative reasoning **from re
 
 Add a summary to an existing report without researching again; imported evidence is not reverified. Switching UI language does not translate existing report text or quotations. New research uses the selected language.
 
+**Live progress:** research streams real stage events through SSE. Search counts mean queries that returned successfully; reading counts mean completed retrieval attempts, including unavailable pages. Totals can expand when optional supplemental retrieval runs. Each stage counts its own actual steps; its denominator is not a percentage of the entire investigation. These are task counts, not estimated completion percentages, remaining time, or streamed model tokens. Canceling stops subsequent local work; it cannot recall calls already sent to a provider or guarantee a refund.
+
+**Optional AI citation review:** choose **Review citation relationships** on an existing AI-summary report with exact citations (`1.1` or `1.2`). The confirmation explains one additional call to the same configured model, which may incur fees. It uses existing statements, quotations, and extracts; it does not search or retrieve again. Brief / standard / deep review at most **12 / 24 / 40 targets**, also subject to a bounded input budget. Every omitted target remains explicitly unreviewed. Advice can flag scope, dates, definitions, causality, numbers, translation, or context; it neither authenticates a source nor constitutes independent verification. Exact citations retain `semantic_support=unverified`. Evidence-only responses and exports remove the entire review.
+
 | Depth | Queries / sources / claims | Excerpt per source | Time limit |
 | --- | --- | --- | --- |
 | Brief | 4 / 6 / 4 | 1,800 characters | 150 s |
@@ -101,7 +107,7 @@ The query column is the **initial** budget. Optional supplemental search is off 
 
 More depth may increase time and provider fees. Evidence standards are identical at every depth; inconclusive results are allowed. Capture attempts are limited to three public sources per investigation.
 
-New reports use schema `1.1`; existing `1.0` reports remain readable. Exact citations locate the stored extract, not a live webpage or PDF page. Source families use provisional domain, fingerprint, and duplicate-text grouping. PDF parsing is limited to 1.5 MB response bytes, six seconds, 512 MiB, and the first 12 pages, with no OCR. See [evidence quality and boundaries, in three languages](docs/EVIDENCE.md).
+New research uses schema `1.1`; attaching an AI citation review produces `1.2`. Existing `1.0` and `1.1` reports remain readable. Exact citations locate the stored extract, not a live webpage or PDF page. Source families use provisional domain, fingerprint, and duplicate-text grouping. PDF parsing is limited to 1.5 MB response bytes, six seconds, 512 MiB, and the first 12 pages, with no OCR. See [evidence quality and boundaries, in three languages](docs/EVIDENCE.md).
 
 ## Screenshots and offline reports
 

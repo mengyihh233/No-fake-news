@@ -1,10 +1,10 @@
-# 报告 JSON 结构 v1.1（兼容 v1.0）
+# 报告 JSON 结构 v1.2（兼容 v1.0 / v1.1）
 
 UTF-8 JSON。以下字段供网页与独立 HTML 渲染器共同使用。材料包保存事实和出处；模型生成的解释不得修改服务器检索得到的来源 URL、日期或摘录。
 
 | 字段 | 含义 |
 | --- | --- |
-| `schema_version` | 新研究使用 `1.1`；已有 `1.0` 继续可读，不补造引文 |
+| `schema_version` | 新研究使用 `1.1`；附校验过的引文复核用 `1.2`；已有 `1.0` / `1.1` 继续可读 |
 | `topic`、`scope` | 原始问题、核查的时间/地域/定义边界 |
 | `language` | 正文语言：`zh-CN`（回退）、`en` 或 `ja`；语言不改变证据标准 |
 | `summary_language` | 后加判断的语言或 null；既有证据与 observations 不自动翻译 |
@@ -86,3 +86,17 @@ AI 总结模式的每条结论/推论有可定位的引用。`summary` 本身不
 `search_log` 增加 `round: "initial"|"supplemental"` 与 `gap_claim_ids: ["C1"]`，总计最多 10 条。`retrieval_gaps` 最多 12 条 `{claim_id, reason: "no_keyword_match"|"limited_families", query, attempted}`，记录**初轮**启发式快照。已派发的查询也可能失败，失败另行披露，不能记作成功的零结果。没有缺口或 `attempted=true` 均不认证完整覆盖或论断成立。网页请求 `adaptive_search` 默认 false；开启后简要/标准/深入最多额外 1/2/2 查询，可能增加费用，来源总量和时限不变。独立 Skill 的实际执行上限由宿主工具与用户预算决定。
 
 preferred_sources 只记录显式指定的 URL/标签，不证明访问成功。任何字段、网址、搜索记录、截图或导出均不得包含密码、Cookie、Authorization、Bearer token、MFA 等秘密。网页账户凭据只保存在内存并绑定精确 origin；认证来源禁止截图。正文送外部 AI 前须知情，限定来源模式须披露范围限制。
+
+## v1.2 可选引文复核快照
+
+仅 AI 总结报告可携 `citation_review`，资料模式响应和导出完整删除。`1.2` 沿用全部 `1.1` 精确引文要求，也允许没有复核（如资料模式投影）。旧 `1.0` / `1.1` 继续可读；服务器实际附加复核并升级前，`1.1` 不存复核元数据。
+
+`citation_review` 包含 `generated_at`（1–100 字符）、`language`（`zh-CN|en|ja`）、`model`（1–200）、`method: "ai_advisory"`、`available_targets`（0–323）、`selected_targets`（0–40）、`reviewed_targets`（0–40）、`not_reviewed_targets`（0–323）、`capacity`（简要/标准/深入为 12/24/40）、`input_character_limit: 120000`、`input_characters`（0–120000）及 `items`（0–40）。整数计数不是置信度或真假分数。已复核量等于唯一条目数，未复核量等于总量减已复核量；提交量/输入量须符合服务器按容量与输入预算重算的选择。
+
+每项包括 `target_id`、64 位小写十六进制 `target_sha256`、`relation`（`aligned|partial|unsupported|conflicting|unclear`）、最多七个不重复 `issues`（`scope|time|definition|causality|numeric|translation|context`）、`explanation`（1–3000）及 1–100 个既有完整 `Citation`。引文须为目标原引用的子集，保留原句与精确定位，不新增证据或改变 `semantic_support`；解释按转义纯文本呈现。
+
+目标 ID：`summary`、`claim:C1`、`reasoning:R1`、`observation:1`、`timeline:1`、`comparison:1`、`chart:1:point:1`（数字从 1 开始）。仅有完整精确引文者合格。先总结，再按观察、已评判命题、时间线、图表点、历史比较、推论六类轮转。逐项试加入，达到容量则停止；超过输入上限的目标跳过并继续后项。user-message JSON 保留 Unicode、使用默认分隔符，按 Unicode 码点计长至 120,000，固定系统指令和 schema 另有开销，不截断引句/陈述/摘录。[证据边界](../../../docs/EVIDENCE.md)说明覆盖与费用。
+
+服务器快照绑定 `target_id`、`statement: {report_topic, report_scope, content}`、目标全部已存 `citations` 及按首见证据排序去重的 `context: [{evidence_id, title, context, excerpt}]`。`content` 为可见目标去掉 citations，图表另含 title/unit/kind/note 和 point，补齐模型默认字段。哈希递归把非布尔数转固定十进制字符串，去小数尾零和尾点，负零归 `"0"`；再将保留 Unicode、键排序、紧凑分隔符的 JSON 按 UTF-8 算 SHA-256。元数据由服务器生成，模型不得编造；它仅检查快照一致性，不认证 AI 作者、正确性或来源。更新分析清除过时复核。
+
+无确定性服务器能力的独立宿主可按用户请求用 `1.0` 可选判断字段提供语义建议，不得捏造 `1.2` 快照或声称服务器已核验。离线渲染器只校验和显示既有复核，不调用 AI/搜索。

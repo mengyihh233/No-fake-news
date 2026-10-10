@@ -273,6 +273,18 @@ function citedReport() {
   return report;
 }
 
+function reviewedReport(browser, report = citedReport()) {
+  report.schema_version = '1.2';
+  const available = browser.run('reviewTargets(input).length', report);
+  report.citation_review = {
+    generated_at: '2026-10-10T00:00:00Z', language: 'en', model: 'test-local-model', method: 'ai_advisory',
+    available_targets: available, selected_targets: available, reviewed_targets: 1, not_reviewed_targets: available - 1,
+    capacity: 24, input_character_limit: 120000, input_characters: 1500,
+    items: [{ target_id: 'observation:1', target_sha256: 'c'.repeat(64), relation: 'partial', issues: ['scope', 'context'], explanation: 'PRIVATE_REVIEW_ADVICE', citations: structuredClone(report.observations[0].citations) }]
+  };
+  return report;
+}
+
 test('1.1 import and evidence export preserve exact quotations and neutral metadata using nested allowlists', () => {
   const browser = browserData();
   const report = citedReport();
@@ -353,7 +365,7 @@ test('summary-to-evidence JSON and static HTML drop assessment citations and ret
     ${portion('function externalLink(', 'function dateLabel(')}
     ${portion('function hostLabel(', 'function pick(')}
     ${portion('function sourceReferences(', 'function sourceDomId(')}
-    ${portion('function actionButton(', 'function renderReport(')}
+    ${portion('function sectionHeading(', 'function renderReport(')}
     ${portion('function kindLabel(', 'function renderEvidenceArea(')}
     ${portion('function renderEvidenceArea(', 'function sourceTypeLabel(')}
     ${portion('function sourceTypeLabel(', 'function renderSummary(')}
@@ -367,6 +379,17 @@ test('summary-to-evidence JSON and static HTML drop assessment citations and ret
   report.claims[0].citations = [exactCitation(report.evidence[0].excerpt,'ASSESSMENT_ONLY_ORIGINAL')];
   for (const item of [report.observations[0],report.timeline[0],report.comparisons[0],report.charts[0].points[0]]) item.citations = [exactCitation(report.evidence[0].excerpt,'NEUTRAL_ORIGINAL')];
   for (const item of [report.reasoning[0],report.summary]) item.citations = [exactCitation(report.evidence[0].excerpt,'ASSESSMENT_ONLY_ORIGINAL')];
+  reviewedReport(browser,report);
+  browser.context.state.report = browser.run('normalizeImport(input)',report);
+  browser.context.state.isImported = true;
+  article.append(browser.run('renderCitationReview(state.report)'));
+  browser.run('exportJSON()');
+  await browser.run('exportHTML()');
+  assert.equal(JSON.parse(downloads['report.json']).citation_review.items[0].explanation,'PRIVATE_REVIEW_ADVICE');
+  assert(downloads['report.html'].includes('PRIVATE_REVIEW_ADVICE'));
+  assert(downloads['report.html'].includes('href="#observation-1"'));
+  assert(downloads['report.html'].includes(browser.run("t('review.imported')")));
+  article.replaceChildren(area);
   browser.context.state.report = browser.run('evidenceProjection(normalizeImport(input))',report);
   browser.context.state.filter = null;
   browser.run('renderEvidenceArea()');
@@ -380,11 +403,13 @@ test('summary-to-evidence JSON and static HTML drop assessment citations and ret
   assert.deepEqual(Object.keys(json.claims[0]).sort(),['id','kind','text']);
   assert.equal(json.evidence[0].excerpt,report.evidence[0].excerpt);
   assert.equal(json.observations[0].citations[0].quote,'NEUTRAL_ORIGINAL');
+  assert.equal('citation_review' in json,false);
   const html = downloads['report.html'];
   assert(html.includes('ASSESSMENT_ONLY_ORIGINAL passage. NEUTRAL_ORIGINAL passage.'));
   assert(html.includes('class="citation-quote">NEUTRAL_ORIGINAL</blockquote>'));
   assert(!html.includes('class="citation-quote">ASSESSMENT_ONLY_ORIGINAL</blockquote>'));
   assert(!html.includes('PRIVATE_'));
+  assert(!html.includes('id="citation-review"'));
 });
 
 test('quotation locators use code points, preserve whitespace and select the first repeated occurrence', () => {
@@ -520,11 +545,167 @@ test('research submits the actual adaptive selection alongside language, depth a
   for (const enabled of [false,true]) {
     controls['adaptive-search'].checked = enabled;
     await browser.run('submitResearch({preventDefault(){}})');
-    assert.equal(request.endpoint,'/api/research');
+    assert.equal(request.endpoint,'/api/research/stream');
     assert.equal(request.adaptive_search,enabled);
     assert.equal(request.language,'zh-CN');
     assert.equal(request.depth,'standard');
     assert.equal(request.source_policy,'preferred-only');
     assert.equal(request.sources[0].url,'https://example.org/source');
   }
+});
+
+test('review targets use stable IDs, summary-first round robin and only exact stored quotations', () => {
+  const browser = browserData();
+  const report = citedReport();
+  assert.deepEqual(Array.from(browser.run('reviewTargets(input)',report), target=>target.id), ['summary','observation:1','claim:C1','timeline:1','chart:1:point:1','comparison:1','reasoning:R1']);
+  delete report.claims[0].verdict;
+  delete report.claims[0].analysis;
+  report.timeline[0].citations[0].verification = null;
+  delete report.charts[0].points[0].citations[0].locator;
+  assert.deepEqual(Array.from(browser.run('reviewTargets(input)',report), target=>target.id), ['summary','observation:1','comparison:1','reasoning:R1']);
+});
+
+test('1.2 advisory imports preserve bounded metadata and exact subsets while evidence projection removes the review', () => {
+  const browser = browserData();
+  const report = reviewedReport(browser);
+  report.citation_review.api_key = 'SECRET_REVIEW';
+  report.citation_review.items[0].token = 'SECRET_ITEM';
+  report.citation_review.items[0].citations[0].password = 'SECRET_QUOTE';
+  const normalized = browser.run('normalizeImport(input)',report);
+  assert.equal(normalized.citation_review.selected_targets,7);
+  assert.equal(normalized.citation_review.input_characters,1500);
+  assert.equal(normalized.citation_review.items[0].citations[0].semantic_support,'unverified');
+  assert(!JSON.stringify(normalized).includes('SECRET_'));
+  const withoutLimit = structuredClone(report);delete withoutLimit.citation_review.input_character_limit;
+  assert.equal(browser.run('normalizeImport(input)',withoutLimit).citation_review.input_character_limit,120000);
+  const projected = browser.run('evidenceProjection(input)',normalized);
+  assert.equal('citation_review' in projected,false);
+  assert.equal('summary' in projected,false);
+  assert.equal(projected.observations[0].citations[0].quote,report.observations[0].citations[0].quote);
+  assert.equal(projected.evidence[0].excerpt,report.evidence[0].excerpt);
+  report.mode = 'evidence-only';
+  assert.equal('citation_review' in browser.run('normalizeImport(input)',report),false);
+  const unreviewed = reviewedReport(browser);
+  unreviewed.citation_review.items=[];unreviewed.citation_review.reviewed_targets=0;unreviewed.citation_review.not_reviewed_targets=7;
+  assert.equal(browser.run('normalizeImport(input)',unreviewed).citation_review.reviewed_targets,0);
+});
+
+test('review import rejects invalid targets, changed quotation subsets, bounds and contradictory counts', () => {
+  const browser = browserData();
+  const mutations = [
+    report=>{report.schema_version='1.1';},
+    report=>{report.schema_version='1.0';},
+    report=>{report.citation_review.available_targets=8;},
+    report=>{report.citation_review.not_reviewed_targets=0;},
+    report=>{report.citation_review.selected_targets=0;},
+    report=>{delete report.citation_review.selected_targets;},
+    report=>{delete report.citation_review.input_characters;},
+    report=>{report.citation_review.input_characters=120001;},
+    report=>{report.citation_review.input_character_limit=200000;},
+    report=>{report.citation_review.capacity=40;},
+    report=>{report.citation_review.language='fr';},
+    report=>{report.citation_review.method='verified';},
+    report=>{report.citation_review.model='x'.repeat(201);},
+    report=>{report.citation_review.items[0].target_id='observation:999';},
+    report=>{report.citation_review.items[0].target_sha256='invalid';},
+    report=>{report.citation_review.items[0].relation='true';},
+    report=>{report.citation_review.items[0].issues=['confidence'];},
+    report=>{report.citation_review.items[0].issues=['scope','scope'];},
+    report=>{report.citation_review.items[0].explanation=' ';},
+    report=>{report.citation_review.items[0].explanation='x'.repeat(3001);},
+    report=>{report.citation_review.items[0].citations=[];},
+    report=>{report.citation_review.items[0].citations=[exactCitation(report.evidence[0].excerpt,'前文')];},
+    report=>{report.citation_review.items[0].citations[0].locator.start++;},
+    report=>{report.citation_review.items[0].citations.push(structuredClone(report.citation_review.items[0].citations[0]));},
+    report=>{report.citation_review.items.push(structuredClone(report.citation_review.items[0]));report.citation_review.reviewed_targets=2;report.citation_review.not_reviewed_targets=5;}
+  ];
+  for (const mutate of mutations) {const report=reviewedReport(browser);mutate(report);assert.throws(()=>browser.run('normalizeImport(input)',report));}
+});
+
+test('source availability counts reflect actual records and review presentation is localized without translating report text', () => {
+  const browser = browserData();
+  const evidence = [
+    {status:'retrieved',content_kind:'full_text',source_family:'a'},
+    {status:'retrieved',content_kind:'search_snippet',source_family:'a'},
+    {status:'snippet_only',content_kind:'search_snippet',source_family:'b'},
+    {status:'unavailable',content_kind:'full_text',source_family:'c'},
+    {status:'unknown'}
+  ];
+  assert.deepEqual(JSON.parse(JSON.stringify(browser.run('sourceCoverage(input)',{evidence}))),{sources:5,retrieved:2,fulltext:1,snippets:2,unavailable:1,families:3});
+  browser.context.el = (tag,cls,text,attrs={})=>({tag,cls,text,attrs,children:[],append(...nodes){this.children.push(...nodes);}});
+  browser.context.reportSection = (id,index,title,subtitle)=>browser.context.el('section','',[title,subtitle],{id});
+  browser.context.renderCitations = citations=>({citations});
+  vm.runInContext(portion('function renderCoverage(', 'function depthLabel('),browser.context);
+  const report = reviewedReport(browser);
+  browser.context.state.isImported=true;
+  for(const language of ['zh-CN','en','ja']) {
+    browser.run('I18n.setLanguage(input)',language);
+    const coverage=JSON.stringify(browser.run('renderCoverage(input)',{evidence}));
+    assert(coverage.includes(browser.run("t('coverage.disclaimer')")));
+    const view=JSON.stringify(browser.run('renderCitationReview(input)',report));
+    for(const key of ['review.disclaimer','review.imported','review.relation_partial','review.issue_scope','review.issue_context','review.unreviewed']) assert(view.includes(browser.run('t(input)',key)));
+    assert(view.includes('PRIVATE_REVIEW_ADVICE'));
+    assert(view.includes('资料比对'));
+    assert(view.includes('#observation-1'));
+    assert(view.includes('#summary-target'));
+  }
+});
+
+test('research request adapter consumes progress streams once and never silently retries errors', async () => {
+  const browser = browserData();
+  browser.context.AbortController=AbortController;
+  browser.context.ResearchStream=require('../frontend/stream.js');
+  browser.context.clearError=()=>{};
+  const errors=[],progress=[],pending=[];
+  browser.context.showError=message=>errors.push(message);
+  browser.context.updateResearchProgress=value=>progress.push(value);
+  browser.context.setPending=value=>{browser.context.state.pending=value;pending.push(value);};
+  browser.context.state.operationId=0;
+  vm.runInContext(portion('async function requestJSON(', 'async function installReport('),browser.context);
+  let calls=0,request;
+  const stream = text=>new ReadableStream({start(controller){controller.enqueue(new TextEncoder().encode(text));controller.close();}});
+  const frame = (event,payload)=>`event: ${event}\ndata: ${JSON.stringify(payload)}\n\n`;
+  browser.context.fetch=async (url,options)=>{calls++;request={url,options};return {ok:true,headers:{get:()=> 'text/event-stream; charset=utf-8'},body:stream(frame('progress',{stage:'reading',completed:2,total:6})+frame('result',{schema_version:'1.2',evidence:[],claims:[]}))};};
+  const result=await browser.run("requestJSON('/api/research/stream',{method:'POST',body:'{}'},'research')");
+  assert.equal(result.schema_version,'1.2');assert.equal(calls,1);assert.equal(progress[0].completed,2);assert.equal(request.options.headers.Accept,'text/event-stream');assert.equal(request.options.signal.aborted,false);
+  for (const response of [
+    {ok:false,status:422,text:async()=>JSON.stringify({error:{code:'invalid',message:'Server validation detail'}})},
+    {ok:true,headers:{get:()=> 'application/json'},text:async()=>JSON.stringify({evidence:[],claims:[]})},
+    {ok:true,headers:{get:()=> 'text/event-stream'},body:stream(frame('progress',{stage:'reading',completed:1,total:6}))},
+    {ok:true,headers:{get:()=> 'text/event-stream'},body:stream(frame('error',{error:{code:'provider',message:'Provider refused'}}))}
+  ]) {
+    const before=calls;
+    browser.context.fetch=async()=>{calls++;return response;};
+    assert.equal(await browser.run("requestJSON('/api/research/stream',{method:'POST'},'research')"),null);
+    assert.equal(calls,before+1);
+    assert.equal(browser.context.state.pending,false);
+  }
+  assert.equal(errors[0],'Server validation detail');
+  assert(errors.includes(browser.run("t('stream.unavailable')")));
+  assert(errors.includes(browser.run("t('stream.invalid')")));
+  assert(errors.includes('Provider refused'));
+  assert.deepEqual(pending,[true,false,true,false,true,false,true,false,true,false]);
+});
+
+test('review requires explicit dialog confirmation and preserves report flags or the original report on failure', async () => {
+  const browser=browserData();
+  const report=reviewedReport(browser);
+  browser.context.state.report=report;browser.context.state.isDemo=true;browser.context.state.isImported=true;
+  browser.context.el=(_tag,_cls,text)=>({text});
+  let opened=0,closed=0,request=null,installed=null;
+  const controls={'review-dialog':{showModal(){opened++;},close(){closed++;}},'review-destination':{replaceChildren(){}}};
+  browser.context.$=id=>controls[id];
+  browser.context.validateAI=()=>({base_url:'http://localhost:11434/v1',model:'local',api_key:''});
+  browser.context.showError=message=>{throw new Error(message);};browser.context.toast=()=>{};
+  let response=null;
+  browser.context.requestJSON=async (path,options)=>{request={path,...JSON.parse(options.body)};return response;};
+  browser.context.installReport=(...args)=>{installed=args;return true;};
+  vm.runInContext(portion('function askReview(', 'function normalizeImport('),browser.context);
+  browser.run('askReview()');assert.equal(opened,1);assert.equal(request,null);
+  await browser.run('generateReview()');assert.equal(closed,1);assert.equal(installed,null);assert.equal(browser.context.state.report,report);
+  assert.equal(request.path,'/api/review');assert.equal(request.language,'zh-CN');assert.equal(request.ai.model,'local');
+  response=structuredClone(report);await browser.run('generateReview()');
+  assert.equal(installed[0],response);assert.deepEqual(installed.slice(1),['ai-summary',true,true]);
+  report.mode='evidence-only';browser.run('askReview()');assert.equal(opened,1);
+  report.mode='ai-summary';report.schema_version='1.0';browser.run('askReview()');assert.equal(opened,1);
 });

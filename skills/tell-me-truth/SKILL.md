@@ -11,11 +11,11 @@ Turn a claim, news item, question, or scenario into a traceable evidence report 
 
 主張・ニュース・質問・状況を、出典をたどれるデータ・論理・歴史比較のレポートにします。判定は任意、深さは独立して選択します。完全な無偏向や最終的な真実を保証しません。
 
-v0.2：为分析保留原样引句和可复核摘录定位；文档读取、补充检索与谱系归组须披露实际工具和预算。无法确定性计算定位时沿用 `1.0` 并注明缺失，不伪造 `1.1` 校验信息。
+v0.3：保留原样引文与可复核定位，只报告实际研究进度。用户可另选 AI 复核引用关系；须说明同模型、额外调用费用及未复核范围。无确定性服务器能力的宿主沿用 `1.0`，不自造 `1.1` 定位或 `1.2` 复核元数据。详见对应语言使用说明。
 
-v0.2: retain verbatim analysis quotes and inspectable extract positions; disclose actual document tools, supplemental searches, and grouping limits. Without deterministic locator computation, use `1.0` with explicit gaps rather than inventing `1.1` verification metadata.
+v0.3: retain original quotes and reproducible locations; report actual research progress. Users may request an AI review of citation relationships; disclose the same model, extra call costs, and unreviewed scope. Hosts without deterministic server capabilities use `1.0`, never invented `1.1` locators or `1.2` review metadata. See the matching usage reference.
 
-v0.2：分析の原文引用と確認可能な抜粋位置を保持し、文書ツール、補足検索、系統分類の実際の制約を開示します。確定的に位置を計算できない場合は不足を明記した `1.0` を使い、`1.1` の検証情報を捏造しません。
+v0.3：原文引用と再計算できる位置を保持し、実際の調査進捗のみ表示します。引用関係の AI 確認は任意で、同じモデル、追加料金、未確認範囲を明記します。確定的なサーバー機能のない環境は `1.0` を使い、`1.1` の位置情報や `1.2` の確認メタデータを捏造しません。各言語の使用手順を参照してください。
 
 ## Read the complete instructions / 阅读完整说明 / 詳細手順
 

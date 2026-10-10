@@ -217,8 +217,37 @@ class RetrievalGap(StrictModel):
     attempted: bool
 
 
+ReviewRelation = Literal["aligned", "partial", "unsupported", "conflicting", "unclear"]
+ReviewIssue = Literal["scope", "time", "definition", "causality", "numeric", "translation", "context"]
+ReviewTargetID = Annotated[str, Field(pattern=r"^(?:summary|claim:C[1-9][0-9]*|observation:[1-9][0-9]*|timeline:[1-9][0-9]*|comparison:[1-9][0-9]*|chart:[1-9][0-9]*:point:[1-9][0-9]*|reasoning:R[1-9][0-9]*)$", max_length=100)]
+
+
+class ReviewItem(StrictModel):
+    target_id: ReviewTargetID
+    target_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    relation: ReviewRelation
+    issues: list[ReviewIssue] = Field(default_factory=list, max_length=7)
+    explanation: str = Field(min_length=1, max_length=3000)
+    citations: list[Citation] = Field(min_length=1, max_length=100)
+
+
+class CitationReview(StrictModel):
+    generated_at: str = Field(min_length=1, max_length=100)
+    language: Language
+    model: str = Field(min_length=1, max_length=200)
+    method: Literal["ai_advisory"] = "ai_advisory"
+    available_targets: int = Field(strict=True, ge=0, le=323)
+    selected_targets: int = Field(strict=True, ge=0, le=40)
+    reviewed_targets: int = Field(strict=True, ge=0, le=40)
+    not_reviewed_targets: int = Field(strict=True, ge=0, le=323)
+    capacity: Literal[12, 24, 40]
+    input_character_limit: Literal[120000] = 120000
+    input_characters: int = Field(strict=True, ge=0, le=120000)
+    items: list[ReviewItem] = Field(default_factory=list, max_length=40)
+
+
 class Report(StrictModel):
-    schema_version: Literal["1.0", "1.1"] = "1.0"
+    schema_version: Literal["1.0", "1.1", "1.2"] = "1.0"
     topic: str = Field(min_length=1, max_length=6000)
     mode: Mode
     depth: Depth = "standard"
@@ -241,9 +270,16 @@ class Report(StrictModel):
     summary_language: Language | None = None
     search_log: list[SearchLog] = Field(default_factory=list, max_length=10)
     retrieval_gaps: list[RetrievalGap] = Field(default_factory=list, max_length=12)
+    citation_review: CitationReview | None = None
 
 
 class SummarizeRequest(StrictModel):
+    report: Report
+    ai: AIConfig = Field(default_factory=AIConfig)
+    language: Language = "zh-CN"
+
+
+class ReviewRequest(StrictModel):
     report: Report
     ai: AIConfig = Field(default_factory=AIConfig)
     language: Language = "zh-CN"

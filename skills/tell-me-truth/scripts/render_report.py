@@ -12,6 +12,7 @@ import math
 import re
 import sys
 from decimal import Decimal, InvalidOperation
+from itertools import zip_longest
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -90,7 +91,7 @@ _MESSAGES = {
     "bad_language": ("language 只支持 zh-CN、en、ja。", "language must be zh-CN, en, or ja.", "language は zh-CN、en、ja のいずれかです。"),
     "bad_mode": ("mode 只支持 evidence-only、ai-summary。", "mode must be evidence-only or ai-summary.", "mode は evidence-only または ai-summary です。"),
     "bad_url": ("来源 URL 必须是无凭据的 http(s) 地址。", "Source URLs must be http(s) addresses without embedded credentials.", "情報源の URL は認証情報を含まない http(s) アドレスである必要があります。"),
-    "bad_schema": ("需要 schema_version=1.0 或 1.1 和 topic。", "schema_version=1.0 or 1.1 and topic are required.", "schema_version=1.0 または 1.1 と topic が必要です。"),
+    "bad_schema": ("需要 schema_version=1.0、1.1 或 1.2 和 topic。", "schema_version=1.0, 1.1, or 1.2 and topic are required.", "schema_version=1.0、1.1、1.2 のいずれかと topic が必要です。"),
     "bad_depth": ("depth 应为 brief、standard 或 deep。", "depth must be brief, standard, or deep.", "depth は brief、standard、deep のいずれかです。"),
     "duplicate_ids": ("命题及来源 ID 必须唯一。", "Claim and source IDs must be unique.", "主張と情報源の ID は一意である必要があります。"),
     "bad_ids": ("命题/来源 ID 应为 C1…/E1…。", "Claim/source IDs must use C1…/E1….", "主張・情報源の ID は C1…・E1… の形式にしてください。"),
@@ -132,6 +133,27 @@ _MESSAGES = {
     "preferred_note": ("网址仅表示用户指定范围；是否实际取得请查看来源档案。", "These URLs describe the user's preferred scope; consult source records for actual retrieval.", "URL はユーザーの指定範囲です。実際の取得状況は情報源の記録を確認してください。"),
     "bad_source_policy": ("来源策略无效或指定来源超过 6 个。", "Invalid source policy or more than six preferred sources.", "情報源の方針が無効、または指定情報源が 6 件を超えています。"),
     "summary_language": ("总结语言", "Summary language", "要約の言語"),
+    "citation_review": ("AI 引文关系复核", "AI citation relationship review", "引用関係の AI 確認"),
+    "review_note": ("这是同一配置模型根据已有摘录给出的建议，没有重新搜索或抓取，不是独立核实或真实性认证。原句匹配状态不变，语义支持仍未验证。", "Advice from the same configured model using existing extracts, without new searches or retrieval. This is not independent verification or source authentication. Exact matching is unchanged; semantic support remains unverified.", "同じ設定のモデルが既存抜粋から示す助言です。新たな検索・取得は行わず、独立検証や真正性の認証ではありません。原文一致の状態は変わらず、意味的な裏付けは未検証です。"),
+    "review_counts": ("有精确引文的目标 {available} 项 · 已复核 {reviewed} 项 · 未复核 {unreviewed} 项 · 本次上限 {capacity} 项", "Targets with exact citations: {available} · reviewed: {reviewed} · unreviewed: {unreviewed} · capacity: {capacity}", "精確引用のある対象 {available} 件・確認済み {reviewed} 件・未確認 {unreviewed} 件・今回の上限 {capacity} 件"),
+    "review_input": ("实际提交 {selected} 项目标 · 输入 {characters} / {limit} Unicode 码点。容量、输入上限或模型漏审导致的省略均未复核。", "Targets submitted: {selected} · input: {characters} / {limit} Unicode code points. Targets omitted by capacity, input limits, or the model remain unreviewed.", "送信対象 {selected} 件・入力 {characters} / {limit} Unicode コードポイント。件数・入力の上限またはモデルの省略による対象は未確認です。"),
+    "review_model": ("所用模型", "Model used", "使用モデル"),
+    "review_target": ("复核目标", "Review target", "確認対象"),
+    "review_issues": ("需检查的方面", "Areas to inspect", "確認する観点"),
+    "review_unreviewed": ("未复核目标", "Unreviewed targets", "未確認の対象"),
+    "review_aligned": ("内容相符（AI 建议）", "Aligned (AI advice)", "整合（AI の助言）"),
+    "review_partial": ("部分相符（AI 建议）", "Partially aligned (AI advice)", "部分的に整合（AI の助言）"),
+    "review_unsupported": ("引文未提供支持（AI 建议）", "Not supported by the quote (AI advice)", "引用による裏付けなし（AI の助言）"),
+    "review_conflicting": ("存在冲突（AI 建议）", "Conflicting (AI advice)", "矛盾あり（AI の助言）"),
+    "review_unclear": ("关系不清（AI 建议）", "Unclear relationship (AI advice)", "関係が不明（AI の助言）"),
+    "issue_scope": ("范围", "Scope", "範囲"),
+    "issue_time": ("时间", "Time", "時点"),
+    "issue_definition": ("定义与口径", "Definitions", "定義・集計基準"),
+    "issue_causality": ("因果", "Causality", "因果"),
+    "issue_numeric": ("数值", "Numbers", "数値"),
+    "issue_translation": ("翻译", "Translation", "翻訳"),
+    "issue_context": ("上下文", "Context", "文脈"),
+    "bad_review": ("AI 引文复核的目标、摘要、引用或计数与报告不一致。", "AI citation-review targets, hashes, quotations, or counts are inconsistent with the report.", "引用関係の AI 確認で対象、ハッシュ、引用、件数がレポートと一致しません。"),
     "exact_citations": ("精确原句引用（{count}）", "Exact quotations ({count})", "精確な原文引用（{count}）"),
     "citation_note": ("原句仅与本材料包中的摘录逐字匹配；这不验证原网页真实性、统计解释或引文对论断的语义支持关系。", "Quotations match extracts in this package verbatim. This does not establish the original webpage's authenticity, statistical interpretation, or semantic support for a claim.", "引用文はこの資料の抜粋とそのまま一致します。元ページの真正性、統計の解釈、主張への意味的な裏付けは検証していません。"),
     "citation_legacy": ("此条旧资料未提供精确引文定位。", "This legacy record has no exact quotation locator.", "この旧形式の記録には精確な引用位置がありません。"),
@@ -213,6 +235,20 @@ def project_citations(items):
     return result
 
 
+def project_review(review):
+    result = {key: copy.deepcopy(review[key]) for key in (
+        "generated_at", "language", "model", "method", "available_targets", "reviewed_targets",
+        "not_reviewed_targets", "capacity", "selected_targets", "input_character_limit", "input_characters", "items") if key in review}
+    if isinstance(result.get("items"), list):
+        result["items"] = [{key: value for key, value in item.items() if key in (
+            "target_id", "target_sha256", "relation", "issues", "explanation", "citations")}
+                           for item in result["items"]]
+        for item in result["items"]:
+            if "citations" in item:
+                item["citations"] = project_citations(item["citations"])
+    return result
+
+
 def project_report(report: dict, mode: str) -> dict:
     """Allowlist public data rather than hiding verdicts with CSS."""
     result = {key: copy.deepcopy(report[key]) for key in PUBLIC_FIELDS if key in report}
@@ -245,6 +281,8 @@ def project_report(report: dict, mode: str) -> dict:
             for key in ("verdict", "analysis", "citations"):
                 if key in original:
                     projected[key] = copy.deepcopy(original[key])
+        if report.get("citation_review") is not None:
+            result["citation_review"] = project_review(report["citation_review"])
     else:
         for link in result["links"]:
             link["relation"] = "context" if link.get("relation") == "context" else "relevant_to"
@@ -315,9 +353,9 @@ def validate_exact_citations(item: dict, evidence: dict, allowed: set, language:
 
 def validate(report: dict, language: str | None = None) -> None:
     language = report_language(report, language)
-    if report.get("schema_version") not in ("1.0", "1.1") or not report.get("topic"):
+    if report.get("schema_version") not in ("1.0", "1.1", "1.2") or not report.get("topic"):
         raise ValueError(tr(language, "bad_schema"))
-    strict_citations = report["schema_version"] == "1.1"
+    strict_citations = report["schema_version"] in ("1.1", "1.2")
     if report.get("depth", "standard") not in ("brief", "standard", "deep"):
         raise ValueError(tr(language, "bad_depth"))
     if report.get("source_policy", "balanced") not in ("balanced", "preferred-only") or len(report.get("preferred_sources", [])) > 6:
@@ -404,6 +442,150 @@ def validate(report: dict, language: str | None = None) -> None:
     for search in report.get("search_log", []):
         if search.get("round", "initial") not in ("initial", "supplemental") or any(cid not in known_claims for cid in search.get("gap_claim_ids", [])):
             raise ValueError(tr(language, "bad_metadata"))
+    validate_citation_review(report, language)
+
+
+def canonical_numbers(value):
+    """Match server review hashing across integer/float JSON round trips."""
+    if isinstance(value, (int, float)) and not isinstance(value, bool):
+        if not math.isfinite(value):
+            raise ValueError("Nonfinite review number")
+        text = format(Decimal(str(value)), "f")
+        if "." in text:
+            text = text.rstrip("0").rstrip(".")
+        return "0" if text == "-0" else text
+    if isinstance(value, dict):
+        return {key: canonical_numbers(item) for key, item in value.items()}
+    if isinstance(value, list):
+        return [canonical_numbers(item) for item in value]
+    return value
+
+
+def complete_citation(citation):
+    result = {"locator": None, "verification": None, "semantic_support": "unverified", **citation}
+    if isinstance(result["locator"], dict):
+        result["locator"] = {"coordinate_system": "unicode_codepoints", **result["locator"]}
+    return result
+
+
+def review_targets(report):
+    """Reproduce the server's visible target snapshots without backend imports."""
+    sources = {item["id"]: item for item in report["evidence"]}
+
+    def target(identifier, item, defaults=None, extra=None):
+        quoted = item.get("citations", [])
+        if not quoted or any(c.get("verification") != "exact_match" or not isinstance(c.get("locator"), dict) for c in quoted):
+            return None
+        content = {**(defaults or {}), **{key: value for key, value in item.items() if key != "citations"}}
+        if extra is not None:
+            content = {**extra, "point": content}
+        return {"target_id": identifier,
+                "statement": {"report_topic": report["topic"], "report_scope": report.get("scope", ""), "content": content},
+                "citations": [complete_citation(c) for c in quoted],
+                "context": [{"evidence_id": eid, "title": sources[eid]["title"], "context": sources[eid].get("context", ""), "excerpt": sources[eid].get("excerpt", "")}
+                            for eid in dict.fromkeys(c["evidence_id"] for c in quoted)]}
+
+    categories = [[], [], [], [], [], []]
+    categories[0] = [target(f"observation:{i}", item) for i, item in enumerate(report.get("observations", []), 1)]
+    categories[1] = [target(f'claim:{item["id"]}', item, {"verdict": None, "analysis": None})
+                     for item in report["claims"] if item.get("verdict") or item.get("analysis")]
+    categories[2] = [target(f"timeline:{i}", item) for i, item in enumerate(report["timeline"], 1)]
+    for chart_index, chart in enumerate(report["charts"], 1):
+        extra = {"note": "", **{key: value for key, value in chart.items() if key != "points"}}
+        categories[3].extend(target(f"chart:{chart_index}:point:{i}", item, {"calculation": None}, extra)
+                             for i, item in enumerate(chart["points"], 1))
+    categories[4] = [target(f"comparison:{i}", item) for i, item in enumerate(report["comparisons"], 1)]
+    categories[5] = [target(f'reasoning:{item["id"]}', item) for item in report.get("reasoning", [])]
+    categories = [[item for item in category if item is not None] for category in categories]
+    summary = target("summary", report["summary"], {"caveats": []}) if report.get("summary") else None
+    return ([summary] if summary else []) + [item for row in zip_longest(*categories) for item in row if item is not None]
+
+
+def review_target_sha256(target):
+    serialized = json.dumps(canonical_numbers(target), ensure_ascii=False, sort_keys=True,
+                            separators=(",", ":"), allow_nan=False)
+    return hashlib.sha256(serialized.encode("utf-8")).hexdigest()
+
+
+def build_review_payload(targets, depth, language):
+    sources = {entry["evidence_id"]: entry for target in targets for entry in target["context"]}
+    return canonical_numbers({"language": language, "depth": depth, "method": "ai_advisory",
+                              "targets": [{"target_id": target["target_id"], "statement": target["statement"],
+                                           "quotations": [{"evidence_id": c["evidence_id"], "quote": c["quote"]}
+                                                          for c in target["citations"]]} for target in targets],
+                              "source_context": list(sources.values())})
+
+
+def review_input_characters(payload):
+    return len(json.dumps(payload, ensure_ascii=False, allow_nan=False))
+
+
+def selected_review_targets(report, language):
+    selected = []
+    depth = report.get("depth", "standard")
+    capacity = {"brief": 12, "standard": 24, "deep": 40}[depth]
+    for target in review_targets(report):
+        if len(selected) >= capacity:
+            break
+        if review_input_characters(build_review_payload([*selected, target], depth, language)) <= 120000:
+            selected.append(target)
+    return selected
+
+
+def validate_citation_review(report, language):
+    review = report.get("citation_review")
+    if review is None:
+        return
+
+    def reject():
+        raise ValueError(tr(language, "bad_review"))
+
+    if not isinstance(review, dict) or report.get("schema_version") != "1.2" or report.get("mode") != "ai-summary":
+        reject()
+    if review.get("method") != "ai_advisory" or review.get("language") not in LANGUAGES:
+        reject()
+    for field, maximum in (("generated_at", 100), ("model", 200)):
+        if not isinstance(review.get(field), str) or not review[field].strip() or len(review[field]) > maximum:
+            reject()
+    for field, maximum in (("available_targets", 323), ("reviewed_targets", 40), ("not_reviewed_targets", 323), ("capacity", 40), ("selected_targets", 40), ("input_characters", 120000)):
+        if type(review.get(field)) is not int or not 0 <= review[field] <= maximum:
+            reject()
+    items = review.get("items")
+    targets = review_targets(report)
+    capacity = {"brief": 12, "standard": 24, "deep": 40}[report.get("depth", "standard")]
+    selected_targets = selected_review_targets(report, review["language"])
+    input_size = review_input_characters(build_review_payload(selected_targets, report.get("depth", "standard"), review["language"]))
+    if type(review.get("input_character_limit", 120000)) is not int or review.get("input_character_limit", 120000) != 120000:
+        reject()
+    if not isinstance(items, list) or len(items) > len(selected_targets) or (review["available_targets"], review["reviewed_targets"], review["not_reviewed_targets"], review["capacity"], review["selected_targets"], review["input_characters"]) != (len(targets), len(items), len(targets) - len(items), capacity, len(selected_targets), input_size):
+        reject()
+    selected = {item["target_id"]: item for item in selected_targets}
+    sources = {item["id"]: item for item in report["evidence"]}
+    urls = {item["url"] for item in report["evidence"]}
+    seen = set()
+    for item in items:
+        if not isinstance(item, dict) or not isinstance(item.get("target_id"), str):
+            reject()
+        target = selected.get(item["target_id"])
+        if target is None or item["target_id"] in seen or item.get("target_sha256") != review_target_sha256(target):
+            reject()
+        seen.add(item["target_id"])
+        if item.get("relation") not in ("aligned", "partial", "unsupported", "conflicting", "unclear"):
+            reject()
+        issues = item.get("issues", [])
+        if not isinstance(issues, list) or len(issues) > 7 or any(issue not in ("scope", "time", "definition", "causality", "numeric", "translation", "context") for issue in issues) or len(issues) != len(set(issues)):
+            reject()
+        explanation = item.get("explanation")
+        if not isinstance(explanation, str) or not explanation.strip() or len(explanation) > 3000:
+            reject()
+        if any(url.rstrip(".,，。;；)）]") not in urls for url in re.findall(r'https?://[^\s"<>]+', explanation)):
+            reject()
+        try:
+            validate_exact_citations(item, sources, {c["evidence_id"] for c in target["citations"]}, language, required=True, maximum=100)
+        except (ValueError, TypeError, KeyError, AttributeError):
+            reject()
+        if any(complete_citation(c) not in target["citations"] for c in item["citations"]):
+            reject()
 
 
 def esc(value, language: str = "zh-CN") -> str:
@@ -587,9 +769,9 @@ def render(report: dict, root: Path, capture_dir: Path | None = None, language: 
         out.append('</section>')
     if report["charts"]:
         out.append(f'<section><h2>03 / {t("charts")}</h2>')
-        for chart in report["charts"]:
+        for chart_index, chart in enumerate(report["charts"], 1):
             out.append(f'<article><h3>{e(chart["title"])}</h3><p>{t("unit")}: {e(chart.get("unit", ""))}</p>{chart_svg(chart, language)}<table><thead><tr><th>{t("item")}</th><th>{t("value")}</th><th>{t("source")}</th></tr></thead><tbody>')
-            out.extend(f'<tr><td>{e(point["label"])}</td><td>{e(point.get("value"))}</td><td>{citations(point.get("evidence_ids", []))}{exact(point)}</td></tr>' for point in chart["points"])
+            out.extend(f'<tr id="review-chart-{chart_index}-point-{point_index}"><td>{e(point["label"])}</td><td>{e(point.get("value"))}</td><td>{citations(point.get("evidence_ids", []))}{exact(point)}</td></tr>' for point_index, point in enumerate(chart["points"], 1))
             out.append(f'</tbody></table><p class="muted">{e(chart.get("note", ""))}</p>')
             for point in chart["points"]:
                 if point.get("calculation"):
@@ -599,12 +781,12 @@ def render(report: dict, root: Path, capture_dir: Path | None = None, language: 
         out.append('</section>')
     if report["timeline"]:
         out.append(f'<section><h2>04 / {t("timeline")}</h2><ol class="timeline">')
-        out.extend(f'<li><time>{e(item["date"])}</time><h3>{e(item["title"])}</h3><p>{e(item["detail"])}</p>{citations(item["evidence_ids"])}{exact(item)}</li>' for item in report["timeline"])
+        out.extend(f'<li id="review-timeline-{index}"><time>{e(item["date"])}</time><h3>{e(item["title"])}</h3><p>{e(item["detail"])}</p>{citations(item["evidence_ids"])}{exact(item)}</li>' for index, item in enumerate(report["timeline"], 1))
         out.append('</ol></section>')
     if report["comparisons"]:
         out.append(f'<section><h2>05 / {t("comparisons")}</h2>')
-        for comp in report["comparisons"]:
-            out.append(f'<article><h3>{e(comp["case"])}</h3><p>{e(comp.get("date"))} {citations(comp["evidence_ids"])}</p><dl>')
+        for index, comp in enumerate(report["comparisons"], 1):
+            out.append(f'<article id="review-comparison-{index}"><h3>{e(comp["case"])}</h3><p>{e(comp.get("date"))} {citations(comp["evidence_ids"])}</p><dl>')
             for key, label in (("similarities", "similarities"), ("differences", "differences"), ("limits", "inference_limits")):
                 out.append(f'<dt>{t(label)}</dt><dd>{e(comp.get(key, ""))}</dd>')
             out.append('</dl>' + exact(comp) + '</article>')
@@ -613,9 +795,30 @@ def render(report: dict, root: Path, capture_dir: Path | None = None, language: 
         summary = report["summary"]
         if report.get("summary_language"):
             out.append(f'<p class="muted">{t("summary_language")}: {e(report["summary_language"])}</p>')
-        out.append(f'<section><h2>06 / {t("summary")}</h2><article><h3>{e(summary.get("verdict"))}</h3><p>{e(summary["text"])}</p>{citations(summary["evidence_ids"])}<ul>' + "".join(f'<li>{e(text)}</li>' for text in summary.get("caveats", [])) + '</ul>' + exact(summary) + '</article>')
+        out.append(f'<section><h2>06 / {t("summary")}</h2><article id="review-summary"><h3>{e(summary.get("verdict"))}</h3><p>{e(summary["text"])}</p>{citations(summary["evidence_ids"])}<ul>' + "".join(f'<li>{e(text)}</li>' for text in summary.get("caveats", [])) + '</ul>' + exact(summary) + '</article>')
         for step in report.get("reasoning", []):
             out.append(f'<article id="{e(step["id"])}"><h3>{e(step["id"])} → {citations([step["claim_id"]])}</h3><p>{t("premises")} {citations(step["premise_ids"])}</p><p>{e(step["text"])}</p>{exact(step)}</article>')
+        out.append('</section>')
+    if report.get("mode") == "ai-summary" and report.get("citation_review") is not None:
+        review = report["citation_review"]
+        def target_link(identifier):
+            if identifier.startswith(("claim:", "reasoning:")):
+                anchor = identifier.split(":", 1)[1]
+            elif identifier.startswith("observation:"):
+                anchor = f'analysis-observation-{int(identifier.split(":")[1]) - 1}'
+            else:
+                anchor = "review-" + identifier.replace(":", "-")
+            return f'<a href="#{e(anchor)}">{e(identifier)}</a>'
+        out.append(f'<section><h2>{t("citation_review")}</h2><p class="muted">{t("review_note")}</p><p>{t("review_counts", available=review["available_targets"], reviewed=review["reviewed_targets"], unreviewed=review["not_reviewed_targets"], capacity=review["capacity"])}</p><p class="muted">{t("review_input", selected=review["selected_targets"], characters=review["input_characters"], limit=review.get("input_character_limit", 120000))}</p><p class="muted">{t("review_model")}: {e(review["model"])} · {e(review["language"])} · {t("generated")}: {e(review["generated_at"])}</p>')
+        for item in review["items"]:
+            out.append(f'<article><h3>{t("review_target")}: {target_link(item["target_id"])}</h3><p>{t("review_" + item["relation"])}</p><p>{e(item["explanation"])}</p>')
+            if item.get("issues"):
+                out.append(f'<p class="muted">{t("review_issues")}: ' + ' · '.join(t("issue_" + issue) for issue in item["issues"]) + '</p>')
+            out.append(exact(item) + f'<details><summary>SHA-256</summary><code>{e(item["target_sha256"])}</code><p class="muted">{t("hash_note")}</p></details></article>')
+        reviewed = {item["target_id"] for item in review["items"]}
+        unreviewed = [item["target_id"] for item in review_targets(report) if item["target_id"] not in reviewed]
+        if unreviewed:
+            out.append(f'<details><summary>{t("review_unreviewed")} ({len(unreviewed)})</summary><ul>' + ''.join(f'<li>{target_link(identifier)}</li>' for identifier in unreviewed) + '</ul></details>')
         out.append('</section>')
     out.append(f'<section><h2>{t("questions")}</h2><ul>' + "".join(f'<li>{e(text)}</li>' for text in report.get("questions", [])) + f'</ul></section><details><summary>{t("search_log")}</summary>')
     out.extend(f'<p><strong>{e(item.get("query"))}</strong><br>{t("round_" + item.get("round", "initial"))} · {t("intent_" + item.get("intent", "neutral"))} · {e(item.get("provider"))} · {e(item.get("result_count"))} {t("results")} · {e(item.get("ran_at"))} {citations(item.get("gap_claim_ids", []))}</p>' for item in report["search_log"])

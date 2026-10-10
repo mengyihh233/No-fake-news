@@ -11,6 +11,7 @@ from .models import Evidence, Screenshot
 from .i18n import tr
 from .providers import now
 from .security import ServiceError, pinned_request
+from .progress import emit_progress
 
 
 CAPTURE_DIR = Path(__file__).resolve().parents[1] / "runtime" / "captures"
@@ -27,6 +28,8 @@ async def capture_sources(evidence: list[Evidence], language: str = "zh-CN", *, 
         return [tr("网页截图未执行：未安装 playwright；运行 pip install playwright 和 python -m playwright install chromium。", "Screenshots were not captured: playwright is not installed. Run pip install playwright and python -m playwright install chromium.", "スクリーンショットは取得していません。playwright が未インストールです。pip install playwright と python -m playwright install chromium を実行してください。", language)]
     from playwright.async_api import async_playwright, Error as PlaywrightError
     limitations = []
+    selected = evidence[:3]
+    emit_progress("capturing", 0, len(selected))
     CAPTURE_DIR.mkdir(parents=True, exist_ok=True)
     try:
         async with async_playwright() as playwright:
@@ -50,7 +53,7 @@ async def capture_sources(evidence: list[Evidence], language: str = "zh-CN", *, 
                     except ServiceError:
                         await route.abort()
                 await context.route("**/*", route_request)
-                for item in evidence[:3]:
+                for index, item in enumerate(selected, 1):
                     page = await context.new_page()
                     try:
                         await page.goto(item.url, wait_until="domcontentloaded", timeout=16_000)
@@ -63,6 +66,7 @@ async def capture_sources(evidence: list[Evidence], language: str = "zh-CN", *, 
                         limitations.append(tr(f"来源 {item.id} 截图失败（访问限制、网络或页面渲染错误）。", f"Screenshot failed for {item.id} (access restriction, network, or page-rendering error).", f"{item.id} のスクリーンショット取得に失敗しました（アクセス制限、ネットワーク、または描画エラー）。", language))
                     finally:
                         await page.close()
+                    emit_progress("capturing", index, len(selected))
                 await context.close()
             finally:
                 await browser.close()

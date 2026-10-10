@@ -6,7 +6,9 @@
   const t = (key, values) => I18n.t(key, values);
   const locale = () => I18n.getLocale();
   const Workspace = globalThis.NoFakeNewsWorkspace;
-  const state = { report: null, isDemo: false, isImported: false, filter: null, pending: false, controller: null, elapsedTimer: null, operationId: 0, capabilities: { configured: {} } };
+  const ResearchStream = globalThis.NoFakeNewsStream;
+  const Review = globalThis.NoFakeNewsReview;
+  const state = { report: null, isDemo: false, isImported: false, filter: null, pending: false, controller: null, elapsedTimer: null, operationId: 0, installationId: 0, capabilities: { configured: {} } };
   const settingsKey = 'tell-me-truth.settings.v1';
   const SVG_NS = 'http://www.w3.org/2000/svg';
   const asArray = (value) => Array.isArray(value) ? value : [];
@@ -87,6 +89,44 @@
 
   function citedPick(item, fields) {
     return { ...pick(item, fields), citations: projectCitations(item.citations) };
+  }
+
+  function reviewTargets(report) {
+    const targets = [], categories = [[], [], [], [], [], []];
+    const add = (id, item, text, anchor) => {
+      if (asArray(item?.citations).length && item.citations.every(citation => citation.verification === 'exact_match' && citation.locator)) return { id, item, text: textValue(text), anchor };
+      return null;
+    };
+    asArray(report.observations).forEach((item, i) => categories[0].push(add(`observation:${i + 1}`, item, item.text, `observation-${i + 1}`)));
+    asArray(report.claims).filter(item => item.verdict || item.analysis).forEach(item => categories[1].push(add(`claim:${item.id}`, item, item.text, `claim-${item.id}`)));
+    asArray(report.timeline).forEach((item, i) => categories[2].push(add(`timeline:${i + 1}`, item, `${textValue(item.title)} · ${textValue(item.detail)}`, `timeline-${i + 1}`)));
+    asArray(report.charts).forEach((chart, i) => asArray(chart.points).forEach((item, j) => categories[3].push(add(`chart:${i + 1}:point:${j + 1}`, item, `${textValue(chart.title)} · ${textValue(item.label)}`, `chart-${i + 1}-point-${j + 1}`))));
+    asArray(report.comparisons).forEach((item, i) => categories[4].push(add(`comparison:${i + 1}`, item, item.case, `comparison-${i + 1}`)));
+    asArray(report.reasoning).forEach(item => categories[5].push(add(`reasoning:${item.id}`, item, item.text, `reason-${item.id}`)));
+    const summary = report.summary && add('summary', report.summary, report.summary.text, 'summary-target');
+    if (summary) targets.push(summary);
+    const groups = categories.map(items => items.filter(Boolean));
+    for (let i = 0; i < Math.max(0, ...groups.map(items => items.length)); i++) groups.forEach(items => { if (items[i]) targets.push(items[i]); });
+    return targets;
+  }
+
+  function sameCitation(left, right) {
+    const fields = ['evidence_id', 'quote', 'verification', 'semantic_support'];
+    const locatorFields = ['start', 'end', 'prefix', 'suffix', 'excerpt_sha256', 'match_count', 'coordinate_system'];
+    return fields.every(field => (left[field] ?? null) === (right[field] ?? null)) && Boolean(left.locator) === Boolean(right.locator) && (!left.locator || locatorFields.every(field => left.locator[field] === right.locator[field]));
+  }
+
+  function sourceCoverage(report) {
+    const sources = asArray(report.evidence);
+    const retrieved = source => ['retrieved', 'fetched', 'success', 'ok', 'accessible', 'available'].includes(source.status);
+    return {
+      sources: sources.length,
+      retrieved: sources.filter(retrieved).length,
+      fulltext: sources.filter(source => retrieved(source) && ['full_text', 'fulltext', 'body', 'page', 'webpage', 'html', 'extracted_text', 'pdf'].includes(source.content_kind)).length,
+      snippets: sources.filter(source => source.status === 'snippet_only' || /snippet|search_extract/.test(source.content_kind || '')).length,
+      unavailable: sources.filter(source => ['unavailable', 'inaccessible', 'failed', 'blocked', 'not_fetched'].includes(source.status)).length,
+      families: new Set(sources.map(source => source.source_family).filter(Boolean)).size
+    };
   }
 
   // Work in Unicode code points, matching the server rather than UTF-16 offsets.
@@ -224,15 +264,16 @@
     state.pending = pending;
     $('research-button').disabled = pending;
     $('demo-button').disabled = pending;
-    $('report').querySelectorAll('[data-request-action]').forEach((button) => { button.disabled = pending; });
+    $('report').querySelectorAll('[data-request-action]').forEach((button) => { button.disabled = pending || button.hasAttribute('data-ineligible'); });
     const status = $('request-status');
     if (state.elapsedTimer) window.clearInterval(state.elapsedTimer);
     if (!pending) { status.hidden = true; status.replaceChildren(); return; }
     const start = Date.now();
-    const heading = el('div', '', action === 'demo' ? t('status.demo_loading') : action === 'summary' ? t('status.summary_loading') : t('status.research_loading'));
+    const heading = el('div', '', action === 'demo' ? t('status.demo_loading') : action === 'summary' ? t('status.summary_loading') : action === 'review' ? t('review.loading') : t('status.research_loading'));
     const note = el('p', '', action === 'demo' ? t('status.demo_note') : t('status.pending_note'));
     const text = el('div', '');
     text.append(heading, note);
+    if (action === 'research') text.append(el('div', 'request-progress', t('stream.waiting'), { id: 'request-progress', role: 'status', 'aria-live': 'polite' }), el('p', 'stream-disclaimer', t('stream.disclaimer')));
     const cancel = el('button', 'button button-secondary', t('status.cancel'), { type: 'button' });
     cancel.addEventListener('click', () => {
       state.controller?.abort();
@@ -247,6 +288,13 @@
     }, 1000);
   }
 
+  function updateResearchProgress(progress) {
+    const target = $('request-progress');
+    if (!target || !state.pending) return;
+    const stage = t(`stream.stage_${progress.stage}`);
+    target.textContent = progress.total === null ? t('stream.count_unknown', { stage, completed: progress.completed }) : t('stream.count', { stage, completed: progress.completed, total: progress.total });
+  }
+
   async function requestJSON(path, options, action) {
     clearError();
     const operation = ++state.operationId;
@@ -254,7 +302,12 @@
     state.controller = controller;
     setPending(true, action);
     try {
-      const response = await fetch(path, { ...options, headers: { 'Content-Type': 'application/json', 'Accept-Language': I18n.getLanguage(), ...(options?.headers || {}) }, signal: controller.signal, cache: 'no-store' });
+      const streaming = action === 'research';
+      const response = await fetch(path, { ...options, headers: { 'Content-Type': 'application/json', Accept: streaming ? 'text/event-stream' : 'application/json', 'Accept-Language': I18n.getLanguage(), ...(options?.headers || {}) }, signal: controller.signal, cache: 'no-store' });
+      if (response.ok && streaming) {
+        if (!response.headers.get('content-type')?.toLowerCase().startsWith('text/event-stream')) throw new Error(t('stream.unavailable'));
+        return await ResearchStream.readResearchStream(response.body, { signal: controller.signal, onProgress: updateResearchProgress });
+      }
       const raw = await response.text();
       let payload;
       try { payload = JSON.parse(raw); } catch { throw new Error(t('errors.response', { status: response.status })); }
@@ -265,15 +318,26 @@
       if (!payload || typeof payload !== 'object' || !Array.isArray(payload.evidence) || !Array.isArray(payload.claims)) throw new Error(t('errors.report_format'));
       return payload;
     } catch (error) {
-      if (error.name !== 'AbortError') showError(error instanceof TypeError ? t('errors.network') : error.message || t('errors.request'));
+      if (error.name !== 'AbortError') showError(error.name === 'StreamError' ? (error.code === 'server' ? error.message : t(error.code === 'limit' ? 'stream.limit' : 'stream.invalid')) : error instanceof TypeError ? t('errors.network') : error.message || t('errors.request'));
       return null;
     } finally {
       if (state.operationId === operation) { state.controller = null; setPending(false); }
     }
   }
 
-  function installReport(report, mode, isDemo, isImported = false) {
-    state.report = mode === 'evidence-only' ? evidenceProjection(report) : { ...report, mode: 'ai-summary' };
+  async function installReport(report, mode, isDemo, isImported = false) {
+    const installation = ++state.installationId;
+    const operation = state.operationId;
+    let normalized;
+    try {
+      normalized = normalizeImport({ ...report, mode });
+      if (normalized.citation_review) await Review.verify(normalized, reviewTargets(normalized));
+    } catch (error) {
+      showError(error.name === 'ReviewError' ? t(error.code === 'unavailable' ? 'review.verify_unavailable' : 'review.import_invalid') : error.message || t('errors.report_format'));
+      return false;
+    }
+    if (state.installationId !== installation || state.operationId !== operation) return false;
+    state.report = mode === 'evidence-only' ? evidenceProjection(normalized) : normalized;
     state.isDemo = isDemo;
     state.isImported = isImported;
     state.filter = null;
@@ -282,6 +346,7 @@
     if (['brief', 'standard', 'deep'].includes(report.depth)) $('research-depth').value = report.depth;
     renderReport();
     $('report').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    return true;
   }
 
   async function submitResearch(event) {
@@ -298,15 +363,15 @@
     saveSettings();
     let sourceSettings;
     try { sourceSettings = Workspace.getSourceRequest(); } catch (error) { showError(error.message); return; }
-    const report = await requestJSON('/api/research', { method: 'POST', body: JSON.stringify({ topic, mode, depth, language: I18n.getLanguage(), ai, search, ...sourceSettings, include_screenshots: $('include-screenshots').checked, adaptive_search: $('adaptive-search').checked }) }, 'research');
-    if (report) installReport(report, mode, false);
+    const report = await requestJSON('/api/research/stream', { method: 'POST', body: JSON.stringify({ topic, mode, depth, language: I18n.getLanguage(), ai, search, ...sourceSettings, include_screenshots: $('include-screenshots').checked, adaptive_search: $('adaptive-search').checked }) }, 'research');
+    if (report) await installReport(report, mode, false);
   }
 
   async function loadDemo() {
     if (state.pending) return;
     const mode = document.querySelector('input[name="mode"]:checked').value;
     const report = await requestJSON(`/api/demo?mode=${encodeURIComponent(mode)}&language=${encodeURIComponent(I18n.getLanguage())}`, { method: 'GET' }, 'demo');
-    if (report) installReport(report, mode, true);
+    if (report) await installReport(report, mode, true);
   }
 
   function askSummary() {
@@ -326,11 +391,29 @@
     const isDemo = state.isDemo;
     const isImported = state.isImported;
     const report = await requestJSON('/api/summarize', { method: 'POST', body: JSON.stringify({ report: evidenceProjection(state.report), ai, language: I18n.getLanguage() }) }, 'summary');
-    if (report) { installReport(report, 'ai-summary', isDemo, isImported); toast(t('report.summary_added')); }
+    if (report && await installReport(report, 'ai-summary', isDemo, isImported)) toast(t('report.summary_added'));
+  }
+
+  function askReview() {
+    if (state.pending || state.report?.mode !== 'ai-summary' || !['1.1', '1.2'].includes(state.report.schema_version) || !reviewTargets(state.report).length) return;
+    let ai;
+    try { ai = validateAI(); } catch (error) { showError(error.message, true); return; }
+    $('review-destination').replaceChildren(el('span', '', t('summary.destination')), el('strong', '', ai.base_url || (state.capabilities.configured?.ai_base_url ? t('summary.env_endpoint') : t('summary.default_endpoint'))), el('span', '', t('summary.model', { model: ai.model || t('summary.env_model') })));
+    $('review-dialog').showModal();
+  }
+
+  async function generateReview() {
+    $('review-dialog').close();
+    if (state.pending || state.report?.mode !== 'ai-summary') return;
+    let ai;
+    try { ai = validateAI(); } catch (error) { showError(error.message, true); return; }
+    const { isDemo, isImported } = state;
+    const report = await requestJSON('/api/review', { method: 'POST', body: JSON.stringify({ report: state.report, ai, language: I18n.getLanguage() }) }, 'review');
+    if (report && await installReport(report, 'ai-summary', isDemo, isImported)) toast(t('review.done'));
   }
 
   function normalizeImport(input) {
-    if (!input || typeof input !== 'object' || Array.isArray(input) || !['1.0', '1.1'].includes(input.schema_version)) throw new Error(t('errors.schema'));
+    if (!input || typeof input !== 'object' || Array.isArray(input) || !['1.0', '1.1', '1.2'].includes(input.schema_version)) throw new Error(t('errors.schema'));
     const string = (value, fallback = '', max = 12000) => {
       if (value == null) return fallback;
       if (typeof value !== 'string' || Array.from(value).length > max) throw new Error(t('errors.import_text'));
@@ -378,7 +461,7 @@
         for (const key of ['start', 'end', 'match_count']) if (!Number.isInteger(locator[key]) || locator[key] < (key === 'start' ? 0 : 1) || locator[key] > 5000) throw new Error(t('errors.import_citation'));
         item.locator = { start: locator.start, end: locator.end, prefix: string(locator.prefix, '', 80), suffix: string(locator.suffix, '', 80), excerpt_sha256: hash(locator.excerpt_sha256), match_count: locator.match_count, coordinate_system: enumValue(locator.coordinate_system, ['unicode_codepoints'], 'unicode_codepoints') };
       }
-      if ((input.schema_version === '1.1' && (!item.locator || item.verification !== 'exact_match')) || (item.verification === 'exact_match' && !item.locator)) throw new Error(t('errors.import_citation'));
+      if ((input.schema_version !== '1.0' && (!item.locator || item.verification !== 'exact_match')) || (item.verification === 'exact_match' && !item.locator)) throw new Error(t('errors.import_citation'));
       return item;
     }, max);
     const report = {
@@ -497,6 +580,33 @@
         seen.add(key);
       });
     });
+    if (report.mode === 'ai-summary' && input.citation_review != null) {
+      if (report.schema_version !== '1.2') throw new Error(t('review.import_invalid'));
+      const rawReview = object(input.citation_review);
+      const targets = reviewTargets(report);
+      const targetMap = new Map(targets.map(target => [target.id, target]));
+      const review = {
+        generated_at: string(rawReview.generated_at, '', 100), language: enumValue(rawReview.language, I18n.languages), model: string(rawReview.model, '', 200), method: enumValue(rawReview.method, ['ai_advisory']),
+        available_targets: rawReview.available_targets, reviewed_targets: rawReview.reviewed_targets, not_reviewed_targets: rawReview.not_reviewed_targets, capacity: rawReview.capacity
+      };
+      const expectedCapacity = { brief: 12, standard: 24, deep: 40 }[report.depth || 'standard'];
+      if (!review.model || !review.generated_at || review.capacity !== expectedCapacity || ['available_targets', 'reviewed_targets', 'not_reviewed_targets'].some(key => !Number.isInteger(review[key]) || review[key] < 0) || review.available_targets !== targets.length || review.reviewed_targets > review.capacity || review.not_reviewed_targets !== review.available_targets - review.reviewed_targets) throw new Error(t('review.import_invalid'));
+      for (const key of ['selected_targets', 'input_characters']) review[key] = rawReview[key];
+      review.input_character_limit = rawReview.input_character_limit ?? 120000;
+      if (!Number.isInteger(review.selected_targets) || review.selected_targets < review.reviewed_targets || review.selected_targets > Math.min(review.capacity, review.available_targets) || review.input_character_limit !== 120000 || !Number.isInteger(review.input_characters) || review.input_characters < 0 || review.input_characters > review.input_character_limit) throw new Error(t('review.import_invalid'));
+      const seenTargets = new Set();
+      review.items = list(rawReview.items, raw => {
+        const item = object(raw);
+        const target = targetMap.get(item.target_id);
+        if (!target || seenTargets.has(item.target_id)) throw new Error(t('review.import_invalid'));
+        seenTargets.add(item.target_id);
+        const result = { target_id: target.id, target_sha256: hash(item.target_sha256), relation: enumValue(item.relation, ['aligned', 'partial', 'unsupported', 'conflicting', 'unclear']), issues: list(item.issues, issue => enumValue(issue, ['scope', 'time', 'definition', 'causality', 'numeric', 'translation', 'context']), 7), explanation: string(item.explanation, '', 3000), citations: citations(item.citations, target.id.startsWith('chart:') ? 100 : 24) };
+        if (!result.explanation.trim() || !result.citations.length || new Set(result.issues).size !== result.issues.length || result.citations.some(citation => !target.item.citations.some(original => sameCitation(original, citation))) || new Set(result.citations.map(citation => JSON.stringify([citation.evidence_id, citation.quote]))).size !== result.citations.length) throw new Error(t('review.import_invalid'));
+        return result;
+      }, review.capacity);
+      if (review.items.length !== review.reviewed_targets) throw new Error(t('review.import_invalid'));
+      report.citation_review = review;
+    }
     return report.mode === 'evidence-only' ? evidenceProjection(report) : report;
   }
 
@@ -510,8 +620,7 @@
       let input;
       try { input = JSON.parse(await file.text()); } catch { throw new Error(t('errors.import_json')); }
       const report = normalizeImport(input);
-      installReport(report, report.mode, false, true);
-      toast(t('report.imported'));
+      if (await installReport(report, report.mode, false, true)) toast(t('report.imported'));
     } catch (error) { showError(error.message || t('errors.import')); }
     finally { event.target.value = ''; }
   }
@@ -649,6 +758,7 @@
     if (aiMode && report.summary_language) shell.append(el('p', 'report-language', t('language.summary', { language: t(`language.${report.summary_language}`) })));
     if (report.preferred_sources?.length) shell.append(el('p', 'report-language', `${t(report.source_policy === 'preferred-only' ? 'sources.restricted' : 'sources.wide')}: ${report.preferred_sources.map(source => source.label || hostLabel(source.url)).join(' · ')}`));
     if (report.scope) shell.append(el('p', 'report-scope', t('report.scope', { scope: textValue(report.scope) })));
+    shell.append(renderCoverage(report));
     const actions = el('div', 'report-actions');
     if (aiMode) actions.append(actionButton(t('report.only_evidence'), () => {
       state.report = evidenceProjection(state.report);
@@ -658,12 +768,20 @@
       toast(t('report.remove_verdict'));
     }));
     else actions.append(actionButton(t('report.generate_summary'), askSummary, 'button button-secondary', true));
+    if (aiMode) {
+      const eligible = ['1.1', '1.2'].includes(report.schema_version) && reviewTargets(report).length > 0;
+      const reviewButton = actionButton(t('review.button'), askReview, 'button button-secondary', true);
+      reviewButton.disabled = state.pending || !eligible;
+      if (!eligible) { reviewButton.setAttribute('aria-describedby', 'review-unavailable'); reviewButton.setAttribute('data-ineligible', ''); }
+      actions.append(reviewButton);
+    }
     const exports = el('div', 'export-group');
     const htmlExportButton = actionButton(t('report.export_html'), () => exportHTML());
     htmlExportButton.setAttribute('data-action', 'export-html');
     exports.append(actionButton(t('report.export_json'), () => exportJSON()), htmlExportButton);
     actions.append(exports);
     shell.append(actions);
+    if (aiMode && (report.schema_version === '1.0' || !reviewTargets(report).length)) shell.append(el('p', 'review-unavailable', t(report.schema_version === '1.0' ? 'review.legacy' : 'review.no_targets'), { id: 'review-unavailable' }));
     if (state.isDemo) {
       const demoNotice = el('div', 'report-notice');
       demoNotice.append(el('p', '', t('report.demo_notice')), el('p', '', t('report.demo_date', { date: dateLabel(report.generated_at, true) })));
@@ -671,6 +789,7 @@
     }
     if (state.isImported) shell.append(el('div', 'report-notice', t('report.import_notice')));
     if (aiMode && report.summary) shell.append(renderSummary(report.summary));
+    if (aiMode && report.citation_review) shell.append(renderCitationReview(report));
     shell.append(Workspace.renderMap(report, { selected: state.mapClaim, select: id => { state.mapClaim = id; renderReport(); $('evidence-map').scrollIntoView({ block: 'start' }); }, focusSource, relationLabel }));
     const claims = reportSection('claims', '02', t('section.claims'), t('section.claims_help'));
     claims.append(el('div', '', '', { id: 'evidence-area' }));
@@ -690,6 +809,55 @@
 
   function kindLabel(kind) {
     return ({ fact: t('claim.fact'), factual: t('claim.fact'), prediction: t('claim.prediction'), value: t('claim.value'), causal: t('claim.causal'), mixed: t('claim.mixed'), comparison: t('claim.comparison'), opinion: t('claim.opinion'), hypothesis: t('claim.hypothesis') })[kind] || textValue(kind) || t('claim.default');
+  }
+
+  function renderCoverage(report) {
+    const counts = sourceCoverage(report);
+    const section = el('section', 'coverage-summary', '', { 'aria-label': t('coverage.title') });
+    section.append(el('h3', '', t('coverage.title')));
+    const list = el('dl', 'coverage-counts');
+    ['sources', 'retrieved', 'fulltext', 'snippets', 'unavailable', 'families'].forEach(key => {
+      const item = el('div', '');
+      item.append(el('dt', '', t(`coverage.${key}`)), el('dd', '', String(counts[key])));
+      list.append(item);
+    });
+    section.append(list, el('p', '', t('coverage.disclaimer')));
+    return section;
+  }
+
+  function renderCitationReview(report) {
+    const review = report.citation_review;
+    const section = reportSection('citation-review', '↳', t('review.title'), t('review.advisory'));
+    section.append(el('p', 'review-disclaimer', t('review.disclaimer')));
+    section.append(el('p', 'review-meta', t('review.meta', { model: review.model, date: dateLabel(review.generated_at, true), language: t(`language.${review.language}`) })));
+    section.append(el('p', 'review-counts', t('review.counts', { available: review.available_targets, reviewed: review.reviewed_targets, remaining: review.not_reviewed_targets, capacity: review.capacity })));
+    const targets = new Map(reviewTargets(report).map(target => [target.id, target]));
+    asArray(review.items).forEach(item => {
+      const target = targets.get(item.target_id);
+      if (!target) return;
+      const row = el('article', 'review-item');
+      const heading = el('div', 'review-item-heading');
+      heading.append(el('a', 'review-target', `${target.id} · ${target.text}`, { href: `#${target.anchor}` }), el('span', `review-relation review-${item.relation}`, t(`review.relation_${item.relation}`)));
+      row.append(heading);
+      const issues = el('div', 'review-issues');
+      asArray(item.issues).forEach(issue => issues.append(el('span', '', t(`review.issue_${issue}`))));
+      if (!asArray(item.issues).length) issues.append(el('span', '', t('review.no_issues')));
+      row.append(issues, el('p', '', item.explanation), renderCitations(item.citations));
+      section.append(row);
+    });
+    if (review.not_reviewed_targets) {
+      section.append(el('p', 'review-unreviewed', t('review.unreviewed')));
+      const missing = el('details', 'review-unreviewed-targets');
+      missing.append(el('summary', '', t('review.show_unreviewed', { count: review.not_reviewed_targets })));
+      const list = el('ul', '');
+      const reviewedIDs = new Set(asArray(review.items).map(item => item.target_id));
+      for (const target of targets.values()) if (!reviewedIDs.has(target.id)) {
+        const item = el('li', ''); item.append(el('a', '', `${target.id} · ${target.text}`, { href: `#${target.anchor}` })); list.append(item);
+      }
+      missing.append(list); section.append(missing);
+    }
+    if (state.isImported) section.append(el('p', 'review-disclaimer', t('review.imported')));
+    return section;
   }
 
   function depthLabel(depth) {
@@ -717,7 +885,7 @@
       }
       card.append(el('span', 'claim-id', claim.id), content);
       card.addEventListener('click', () => { state.filter = state.filter === claim.id ? null : claim.id; renderEvidenceArea(); });
-      const group = el('div', 'claim-group');
+      const group = el('div', 'claim-group', '', { id: `claim-${claim.id}` });
       group.append(card, renderCitations(claim.citations));
       grid.append(group);
     });
@@ -833,7 +1001,7 @@
   }
 
   function renderSummary(summary) {
-    const section = el('section', 'summary-panel', '', { 'aria-label': t('summary.aria') });
+    const section = el('section', 'summary-panel', '', { id: 'summary-target', 'aria-label': t('summary.aria') });
     section.append(el('span', 'section-kicker', t('summary.report_kicker')), el('h2', '', summary.verdict || t('summary.fallback')));
     if (summary.text) section.append(el('p', '', summary.text));
     const refs = el('div', 'summary-evidence', t('summary.evidence'));
@@ -887,10 +1055,10 @@
       return section;
     }
     const grid = el('div', 'observation-grid');
-    observations.forEach((observation) => {
+    observations.forEach((observation, index) => {
       const labels = { data: ['01', t('observations.data')], logic: ['02', t('observations.logic')], history: ['03', t('section.history')] };
       const [number, label] = labels[observation.kind] || ['—', t('observations.default')];
-      const card = el('article', 'observation-card');
+      const card = el('article', 'observation-card', '', { id: `observation-${index + 1}` });
       const heading = el('div', 'observation-heading');
       heading.append(el('span', 'observation-number', number), el('h3', '', label));
       card.append(heading, el('p', 'observation-text', observation.text));
@@ -929,8 +1097,8 @@
       timelineHeading.style.marginTop = '25px';
       timelineHeading.append(el('h2', '', t('timeline.title')), el('span', 'section-subtitle', t('timeline.help')));
       const list = el('div', 'timeline');
-      timeline.forEach((event) => {
-        const row = el('article', 'timeline-item');
+      timeline.forEach((event, index) => {
+        const row = el('article', 'timeline-item', '', { id: `timeline-${index + 1}` });
         const content = el('div', '');
         content.append(el('h3', '', event.title), el('p', '', event.detail), sourceReferences(event.evidence_ids, 'timeline-refs'), renderCitations(event.citations));
         row.append(el('div', 'timeline-date', dateLabel(event.date)), content);
@@ -976,8 +1144,8 @@
     [t('chart.item'), t('chart.value', { unit: chart.unit ? ` (${textValue(chart.unit)})` : '' }), t('chart.sources')].forEach((label) => headerRow.append(el('th', '', label, { scope: 'col' })));
     header.append(headerRow);
     const body = el('tbody', '');
-    points.forEach((point) => {
-      const row = el('tr', '');
+    points.forEach((point, pointIndex) => {
+      const row = el('tr', '', '', { id: `chart-${index + 1}-point-${pointIndex + 1}` });
       const refs = el('td', '');
       refs.append(asArray(point.evidence_ids).length ? sourceReferences(point.evidence_ids) : el('span', '', t('chart.no_source')), renderCitations(point.citations));
       row.append(el('td', '', point.label), el('td', '', typeof point.value === 'number' && Number.isFinite(point.value) ? point.value.toLocaleString(locale(), { maximumFractionDigits: 8 }) : t('common.missing')), refs);
@@ -1063,8 +1231,8 @@
     [t('history.case'), t('history.similarities'), t('history.differences'), t('history.limits')].forEach((title) => headings.append(el('th', '', title, { scope: 'col' })));
     head.append(headings);
     const body = el('tbody', '');
-    report.comparisons.forEach((item) => {
-      const row = el('tr', '');
+    report.comparisons.forEach((item, index) => {
+      const row = el('tr', '', '', { id: `comparison-${index + 1}` });
       const caseCell = el('td', '');
       caseCell.append(el('strong', '', item.case), el('span', 'comparison-date', dateLabel(item.date)), sourceReferences(item.evidence_ids, 'comparison-refs'), renderCitations(item.citations));
       row.append(caseCell, el('td', '', item.similarities || t('common.not_provided')), el('td', '', item.differences || t('common.not_provided')), el('td', '', item.limits || t('common.not_provided')));
@@ -1295,8 +1463,12 @@
   $('close-summary').addEventListener('click', () => $('summary-dialog').close());
   $('cancel-summary').addEventListener('click', () => $('summary-dialog').close());
   $('confirm-summary').addEventListener('click', generateSummary);
+  $('close-review').addEventListener('click', () => $('review-dialog').close());
+  $('cancel-review').addEventListener('click', () => $('review-dialog').close());
+  $('confirm-review').addEventListener('click', generateReview);
   $('new-investigation').addEventListener('click', () => {
     if (state.pending) { toast(t('status.pending_new')); return; }
+    state.installationId++;
     state.report = null;
     state.filter = null;
     state.isDemo = false;

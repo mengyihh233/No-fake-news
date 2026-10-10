@@ -1,10 +1,10 @@
-# レポート JSON 形式 v1.1（v1.0 互換）
+# レポート JSON 形式 v1.2（v1.0 / v1.1 互換）
 
 UTF-8 JSON を使います。ウェブアプリと単独レンダラーは以下の項目を共有します。資料と出所を保存し、モデルの解釈が取得済みの URL・日付・抜粋を変更してはいけません。
 
 | 項目 | 意味 |
 | --- | --- |
-| `schema_version` | 新規調査は `1.1`。既存の `1.0` も読み、引用を捏造しない |
+| `schema_version` | 新規調査は `1.1`、検査した引用確認付きは `1.2`。既存 `1.0` / `1.1` も読める |
 | `topic`・`scope` | 元の質問、期間・地域・定義の範囲 |
 | `language` | 本文の言語：`zh-CN`（既定）、`en`、`ja` |
 | `summary_language` | 後で追加した要約の言語または null。既存の証拠と分析は無断翻訳しない |
@@ -84,3 +84,17 @@ preferred_sources は明示された URL・ラベルであり、取得成功を�
 証拠の任意項目：`document_format` は `unknown|html|text|pdf|csv|tsv`、`content_sha256` は null または取得した**応答バイト**の小文字 SHA-256 で、抜粋ハッシュとは異なります。`source_family_method` は `domain|exact_content|exact_excerpt|near_duplicate`、`source_family_evidence_ids` は関連する既存証拠 ID です。推移的な場合もある暫定依存の目安で、所有、独立報道、真偽、発行者署名を証明しません。抽出文字やスニペットから応答の指紋を捏造しません。
 
 `search_log` は `round: "initial"|"supplemental"` と `gap_claim_ids: ["C1"]` を追加し、合計最大 10 件です。`retrieval_gaps` は最大 12 件の `{claim_id, reason: "no_keyword_match"|"limited_families", query, attempted}` で、**初回**の目安を保存します。開始した検索も失敗し得るため、失敗は別途明記し、成功したゼロ件と記録しません。不足の不在や `attempted=true` は完全性や主張成立を認証しません。ウェブリクエストの `adaptive_search` は初期値 false、有効時は簡潔・標準・詳細で追加最大 1/2/2 件、料金増加の可能性があり、出典数と時間の上限は不変です。独立 Skill の実行上限はホストのツールと利用者予算に従います。
+
+## v1.2 任意の引用確認スナップショット
+
+`citation_review` は AI 要約のみ保持し、資料モードの応答・書出しは全体を削除します。`1.2` は `1.1` の精確引用の要件をすべて保持し、資料モードへの投影など確認なしも有効です。旧 `1.0` / `1.1` も読めます。サーバーが確認を付けて更新するまで、`1.1` に確認メタデータは保存しません。
+
+`citation_review` は `generated_at`（1–100 文字）、`language`（`zh-CN|en|ja`）、`model`（1–200）、`method: "ai_advisory"`、`available_targets`（0–323）、`selected_targets`（0–40）、`reviewed_targets`（0–40）、`not_reviewed_targets`（0–323）、`capacity`（簡潔/標準/詳細で 12/24/40）、`input_character_limit: 120000`、`input_characters`（0–120000）、`items`（0–40）を持ちます。整数件数であり、確信度・真偽の点数ではありません。確認件数は一意な項目数、未確認は総数から確認件数を引き、送信数・入力量はサーバーの件数・入力制約付き選択の再計算に一致させます。
+
+各項目は `target_id`、小文字 64 桁十六進の `target_sha256`、`relation`（`aligned|partial|unsupported|conflicting|unclear`）、重複のない最大七つの `issues`（`scope|time|definition|causality|numeric|translation|context`）、`explanation`（1–3000）、1–100 個の既存の完全な `Citation` です。引用は対象の元引用の部分集合で、原文と正確な位置を保持し、証拠の追加や `semantic_support` の変更は不可です。説明はエスケープしたプレーンテキストにします。
+
+対象 ID は `summary`、`claim:C1`、`reasoning:R1`、`observation:1`、`timeline:1`、`comparison:1`、`chart:1:point:1`（数字は 1 始まり）。完全な精確引用を持つ対象のみ選びます。要約を先に、観察、評価済み主張、時系列、グラフ点、歴史比較、論証の六種類を巡回します。一つずつ試して件数上限で終了し、入力上限を超える候補は飛ばして後を試します。user-message JSON は Unicode と既定の区切りを保持し、コードポイントで 120,000 までを測り、固定システム指示・schema は別の加算とし、引用・記述・抜粋は切り詰めません。[証拠の限界](../../../docs/EVIDENCE.md)に範囲・料金を記載しています。
+
+サーバーは `target_id`、`statement: {report_topic, report_scope, content}`、対象の全保存 `citations`、初出証拠順に重複除去した `context: [{evidence_id, title, context, excerpt}]` を結びます。`content` は表示対象から citations を除き、グラフでは title/unit/kind/note と point を含み、モデルの既定項目も補います。非ブール数を固定十進文字列にし、小数末尾のゼロと点を削除、負のゼロを `"0"` に統一して、Unicode 保持・キー整列・コンパクト区切りの JSON を UTF-8 SHA-256 にします。サーバーが生成し、モデルは捏造しません。快照の整合性だけを調べ、AI の生成者・正しさ・出典を認証せず、分析更新で古い確認を削除します。
+
+確定的なサーバー機能のない独立ホストは、希望時に `1.0` の任意判断項目で意味的な助言を提供できますが、`1.2` の快照やサーバー検証済みの主張を捏造しません。オフライン描画は既存確認の検査・表示のみで、AI・検索は呼びません。

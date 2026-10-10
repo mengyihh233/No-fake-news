@@ -24,6 +24,12 @@ A locator's `[start, end)` uses Unicode codepoints, not UTF-16 offsets. Context 
 
 Imported extracts, positions, captures, and hashes do not authenticate a source or imply fresh network retrieval; adding judgment reuses material. If the host cannot read, compare verbatim text, or compute hashes, disclose the incomplete step without inventing tool output, locators, or verification status. Clearly identify legacy reports' missing exact quotations; ordinary source IDs are not verified passages.
 
+## v0.3 optional review of citation relationships
+
+Treat exact matching and semantic support as separate checks. When the user chooses the extra AI review, compare each statement's actual scope with existing quotes and surrounding extracts. Inspect time, definitions, causality, numeric interpretation, translation, and omitted context. An aligned relationship is not a finding that the source or statement is true; unsupported means the selected quote does not supply the support, not that the claim is false.
+
+Use the same configured model once, without new searches or retrieval, and disclose possible fees before calling. This is not independent review, fact authentication, or calibrated certainty. Keep original evidence, quotations, and `semantic_support=unverified` unchanged. Only AI-summary mode carries the advice; evidence-only responses/exports remove the entire review. Brief / standard / deep are bounded at 12 / 24 / 40 targets plus an input budget. Report all omissions as unreviewed. A snapshot hash checks that the report still matches the reviewed material, not who generated the advice or whether it is correct. Standalone hosts without deterministic server capabilities use `1.0` and never invent `1.2` server metadata.
+
 ## v0.2 document and table extraction
 
 The Skill depends on tools actually available in its host. Reading webpages does not imply PDF, table, or OCR support. Without suitable capabilities, disclose unread material or extraction failure and retain URLs and unresolved checks. Record `document_format`; inspect headers, units, footnotes, row/column order, empty cells, and reading order. Disclose truncation and parsing limits; never fabricate page or cell locations.

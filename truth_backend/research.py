@@ -14,6 +14,7 @@ from .provenance import canonical_url_key, group_source_families
 from .retrieval import identify_retrieval_gaps
 from .quote_candidates import quote_candidates
 from .quote_catalog import resolve_analysis_quotes
+from .progress import emit_progress
 from .security import ServiceError, check_url_for_secrets
 from .source_access import public_origin, credential_headers, headers_for_url, secret_strings, redact_source_secrets, reject_credentials_in_public_input
 
@@ -73,9 +74,14 @@ async def analyze(report: Report, ai, *, preserve_analysis: bool = False, langua
         instruction += "\n本次为已有报告追加可选判断。保持 prior_analysis 与 evidence 原样，不重新选择材料或改写基础分析；仅返回 claim_assessments、reasoning、summary 和必要补充 limitations，其他数组留空。"
     for attempt in range(2):
         try:
+            phase = "repairing" if attempt else "analyzing"
+            emit_progress(phase, 0, 1)
             analysis = await complete(ai, instruction, payload, Analysis)
+            emit_progress(phase, 1, 1)
+            emit_progress("checking", 0, 1)
             analysis = resolve_analysis_quotes(analysis, catalog_by_id)
             result = apply_analysis(report, analysis, judgment_only=preserve_analysis, require_citations=True)
+            emit_progress("checking", 1, 1)
             if attempt:
                 result.limitations.append(tr("首次分析未通过格式/引用校验，已额外调用一次模型修复，修复结果重新通过同一校验；未重新检索。额外调用可能增加费用，仍受原时限限制。", "The first analysis failed format/reference validation. One additional model call repaired it and passed the same checks; no new search was performed. The extra call may increase fees and remains subject to the original deadline.", "初回の分析が形式・引用検査に失敗したため、モデルを一回追加で呼び出して修正し、同じ検査を通過しました。再検索はしていません。追加料金が発生する場合があり、元の制限時間に従います。", language))
             return result
@@ -128,24 +134,33 @@ async def research(request: ResearchRequest) -> dict:
         raise ServiceError("invalid_source_scope", "仅指定来源模式需要至少一个来源 URL。", 400)
     if not search.api_key.get_secret_value():
         raise ServiceError("missing_search_key", f"请填写 {search.provider.title()} 搜索 API Key；不会用演示数据代替联网结果。", 400)
+    emit_progress("planning", 0, 1)
     plan = await complete(request.ai, PLAN_INSTRUCTION + "\n" + narrative_instruction(request.language),
                           {"topic": request.topic, "depth": request.depth, "budget": budget, "language": request.language,
                            "source_policy": request.source_policy, "preferred_sources": [source.model_dump() for source in request.sources]}, Plan)
+    emit_progress("planning", 1, 1)
     queries = plan_queries(plan, request.topic, request.depth, request.language)
     claims = [Claim(id=f"C{i}", **c.model_dump()) for i, c in enumerate(plan.claims[:budget["max_claims"]], 1)]
     search_semaphore = asyncio.Semaphore(4)
-    async def run_query(query):
+    query_completed = {"searching": 0, "supplemental_search": 0}
+    async def run_query(query, *, stage="searching", total=None):
         async with search_semaphore:
             if request.source_policy == "preferred-only":
-                return await search_web(query.query, search, domains=domains)
-            return await search_web(query.query, search)
-    search_tasks = [asyncio.create_task(run_query(query)) for query in queries]
+                result = await search_web(query.query, search, domains=domains)
+            else:
+                result = await search_web(query.query, search)
+            query_completed[stage] += 1
+            emit_progress(stage, query_completed[stage], total)
+            return result
+    emit_progress("searching", 0, len(queries))
+    search_tasks = [asyncio.create_task(run_query(query, total=len(queries))) for query in queries]
     try:
         responses = await asyncio.gather(*search_tasks)
     except BaseException:
         # A failed or cancelled research request must stop its other paid searches.
         for task in search_tasks:
-            task.cancel()
+            if not task.done() and not task.cancelling():
+                task.cancel()
         await asyncio.gather(*search_tasks, return_exceptions=True)
         raise
     candidates, search_log, seen_urls = [], [], set()
@@ -204,16 +219,31 @@ async def research(request: ResearchRequest) -> dict:
             return item, limitation
     evidence, limitations = [], []
     attempted_urls = set()
+    read_completed = 0
+    read_total = 0
+
+    async def tracked_retrieve(row, index):
+        nonlocal read_completed
+        result = await retrieve(row, index)
+        read_completed += 1
+        emit_progress("reading", read_completed, read_total)
+        return result
 
     async def retrieve_batch(rows):
+        nonlocal read_total
+        if not rows:
+            return
         offset = len(attempted_urls)
-        tasks = [asyncio.create_task(retrieve(row, offset + index)) for index, row in enumerate(rows, 1)]
+        read_total += len(rows)
+        emit_progress("reading", read_completed, read_total)
+        tasks = [asyncio.create_task(tracked_retrieve(row, offset + index)) for index, row in enumerate(rows, 1)]
         attempted_urls.update(canonical_url_key(row["url"]) for row in rows)
         try:
             fetched = await asyncio.gather(*tasks)
         except BaseException:
             for task in tasks:
-                task.cancel()
+                if not task.done() and not task.cancelling():
+                    task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
             raise
         for item, limitation in fetched:
@@ -237,12 +267,14 @@ async def research(request: ResearchRequest) -> dict:
         selected = list(dict.fromkeys(gap.query for gap in gaps))[:extra_budget]
         for gap in gaps:
             gap.attempted = gap.query in selected
-        tasks = [asyncio.create_task(run_query(Query(query=query, intent="neutral"))) for query in selected]
+        emit_progress("supplemental_search", 0, len(selected))
+        tasks = [asyncio.create_task(run_query(Query(query=query, intent="neutral"), stage="supplemental_search", total=len(selected))) for query in selected]
         try:
             extra_results = await asyncio.gather(*tasks, return_exceptions=True)
         except BaseException:
             for task in tasks:
-                task.cancel()
+                if not task.done() and not task.cancelling():
+                    task.cancel()
             await asyncio.gather(*tasks, return_exceptions=True)
             raise
         successes = []
@@ -307,6 +339,7 @@ async def research(request: ResearchRequest) -> dict:
 async def summarize(request: SummarizeRequest) -> dict:
     report = request.report.model_copy(deep=True)
     validate_references(report)
+    report.citation_review = None
     if not report.evidence:
         raise ServiceError("no_evidence", "没有证据可供总结，请先进行检索或导入有来源的报告。", 422)
     report.mode, report.generated_at = "ai-summary", now()
