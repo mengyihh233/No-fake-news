@@ -1,10 +1,10 @@
-# レポート JSON 形式 v1.0
+# レポート JSON 形式 v1.1（v1.0 互換）
 
 UTF-8 JSON を使います。ウェブアプリと単独レンダラーは以下の項目を共有します。資料と出所を保存し、モデルの解釈が取得済みの URL・日付・抜粋を変更してはいけません。
 
 | 項目 | 意味 |
 | --- | --- |
-| `schema_version` | 固定文字列 `1.0` |
+| `schema_version` | 新規調査は `1.1`。既存の `1.0` も読み、引用を捏造しない |
 | `topic`・`scope` | 元の質問、期間・地域・定義の範囲 |
 | `language` | 本文の言語：`zh-CN`（既定）、`en`、`ja` |
 | `summary_language` | 後で追加した要約の言語または null。既存の証拠と分析は無断翻訳しない |
@@ -40,7 +40,7 @@ UTF-8 JSON を使います。ウェブアプリと単独レンダラーは以下
   "retrieved_at": "2026-10-09T10:00:00+08:00",
   "source_type": "unknown",
   "content_kind": "full_text",
-  "excerpt": "短い原文抜粋または忠実な言い換えと明示した内容",
+  "excerpt": "原文の言い回し、空白、文脈を保持する短い抜粋",
   "context": "位置・アクセス制限・翻訳や言い換えの説明",
   "source_family": "同じ原資料の転載に共通の識別子",
   "status": "retrieved",
@@ -63,7 +63,7 @@ links.relation は relevant_to/supports/contradicts/qualifies/context です。�
 
 資料モードは許可項目だけを出力し、summary、reasoning、claim の verdict/analysis、評価的な関連注記を削除します。HTML、ダウンロード JSON、埋め込みスクリプト、タイトル、アクセシビリティ文字列にも適用し、CSS で隠すだけにしません。
 
-observations は両モードで保持します。集計基準、論証の必要条件、歴史上の共通点・差異・交絡要因を既存の主張・証拠 ID とともに説明し、全体の真偽や立場の評価はしません。詳細ウェブ調査は最大 24 資料・8 検索記録で、全深度が同じ形式を使います。
+observations は両モードで保持します。集計基準、論証の必要条件、歴史上の共通点・差異・交絡要因を既存の主張・証拠 ID とともに説明し、全体の真偽や立場の評価はしません。詳細ウェブ調査は最大 24 資料・初回 8 検索、任意の補足は追加で最大 2 検索で、全深度が同じ形式を使います。
 
 scope/limitations/excerpt/questions/chart.note などの自由文もモードを守ります。構造フィルターだけでは暗黙の誘導を全て検出できないため、表現と選択を確認します。再計算可能な数値・比較は残し、総合判定は出しません。要約の結論は証拠と推論に結び、要約そのものを証拠にしません。判定を変え得る資料を示します。
 
@@ -72,3 +72,15 @@ scope/limitations/excerpt/questions/chart.note などの自由文もモードを
 ## 秘密を含まない設定とアカウント
 
 preferred_sources は明示された URL・ラベルであり、取得成功を意味しません。パスワード、Cookie、Authorization、Bearer token、MFA コード等をレポートの全項目・URL・検索記録・画像・出力に入れません。範囲のメタデータにも秘密を含めません。ウェブ版は認証情報をメモリー内だけに保持し、正確な origin に結び付け、認証資料の撮影を無効にします。本文を外部 AI に送る前に知らせます。指定先限定の調査は範囲の制限を開示します。
+
+## v1.1 の引用と検索メタデータ
+
+新規調査の observations、timeline、comparisons、reasoning、claim_assessments、summary は各項目に空でない `citations: [{evidence_id: "E1", quote: "E1 の表示抜粋に存在する原文"}]` を付けます。空白と言語を含めて一字ずつ一致させ、項目の evidence_ids または推論の前提からたどれる証拠を参照します。原文がない事実項目は省略し、不足を questions/limitations に書きます。`1.0` への新しい判断も原文引用を付けますが、古い基礎資料は変更せず、位置を捏造しません。
+
+ウェブサーバーは `verification: "exact_match"`、`semantic_support: "unverified"`、`locator: {start, end, prefix, suffix, excerpt_sha256, match_count, coordinate_system: "unicode_codepoints"}` を生成します。`[start,end)` は**保存した抜粋**の Unicode コードポイント位置で、原ページや PDF ページではありません。前後は各 80 文字まで、複数一致は最初の位置と全一致件数を記録します。`excerpt_sha256` は UTF-8 抜粋の小文字 SHA-256 で、証拠にも `excerpt_metadata: {sha256, coordinate_system: "unicode_codepoints"}` を付けられます。実際の文と一致させ、モデルがサーバーの検証項目を生成してはいけません。確定的な検査ツールのないホスト Skill は `1.0` に通常の `{evidence_id, quote}` を保持し、検証済みと主張しません。読込・描画の整合性は出典の真正性や意味的裏付けではありません。
+
+グラフは入力の `source_quote` または `calculation.source_quotes` を検査して `citations` に保持します。数値は対応する引用中に必要で、各計数項目は一致する引用を持ちます。欠損は null のままです。空一覧の 0 には引用項目がなく、既存の網羅性の制約が必要です。
+
+証拠の任意項目：`document_format` は `unknown|html|text|pdf|csv|tsv`、`content_sha256` は null または取得した**応答バイト**の小文字 SHA-256 で、抜粋ハッシュとは異なります。`source_family_method` は `domain|exact_content|exact_excerpt|near_duplicate`、`source_family_evidence_ids` は関連する既存証拠 ID です。推移的な場合もある暫定依存の目安で、所有、独立報道、真偽、発行者署名を証明しません。抽出文字やスニペットから応答の指紋を捏造しません。
+
+`search_log` は `round: "initial"|"supplemental"` と `gap_claim_ids: ["C1"]` を追加し、合計最大 10 件です。`retrieval_gaps` は最大 12 件の `{claim_id, reason: "no_keyword_match"|"limited_families", query, attempted}` で、**初回**の目安を保存します。開始した検索も失敗し得るため、失敗は別途明記し、成功したゼロ件と記録しません。不足の不在や `attempted=true` は完全性や主張成立を認証しません。ウェブリクエストの `adaptive_search` は初期値 false、有効時は簡潔・標準・詳細で追加最大 1/2/2 件、料金増加の可能性があり、出典数と時間の上限は不変です。独立 Skill の実行上限はホストのツールと利用者予算に従います。

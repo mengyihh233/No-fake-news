@@ -22,7 +22,7 @@ def screenshot_status(language: str = "zh-CN") -> dict:
             "note": tr("截图需安装可选依赖 playwright，并运行 python -m playwright install chromium。页面脚本与外部子资源被禁用。", "Screenshots require the optional playwright package and python -m playwright install chromium. Page scripts and external subresources are disabled.", "スクリーンショットには任意依存 playwright と python -m playwright install chromium が必要です。ページスクリプトと外部リソースは無効です。", language)}
 
 
-async def capture_sources(evidence: list[Evidence], language: str = "zh-CN") -> list[str]:
+async def capture_sources(evidence: list[Evidence], language: str = "zh-CN", *, known_secrets: list[str] | None = None) -> list[str]:
     if not screenshot_status()["package_installed"]:
         return [tr("网页截图未执行：未安装 playwright；运行 pip install playwright 和 python -m playwright install chromium。", "Screenshots were not captured: playwright is not installed. Run pip install playwright and python -m playwright install chromium.", "スクリーンショットは取得していません。playwright が未インストールです。pip install playwright と python -m playwright install chromium を実行してください。", language)]
     from playwright.async_api import async_playwright, Error as PlaywrightError
@@ -40,7 +40,7 @@ async def capture_sources(evidence: list[Evidence], language: str = "zh-CN") -> 
                         await route.abort()
                         return
                     try:
-                        fetched = await pinned_request(route.request.url, redirects=4, timeout=12)
+                        fetched = await pinned_request(route.request.url, redirects=4, timeout=12, known_secrets=known_secrets)
                         if fetched.status_code >= 400:
                             await route.abort()
                         else:

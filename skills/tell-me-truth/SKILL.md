@@ -11,6 +11,12 @@ Turn a claim, news item, question, or scenario into a traceable evidence report 
 
 主張・ニュース・質問・状況を、出典をたどれるデータ・論理・歴史比較のレポートにします。判定は任意、深さは独立して選択します。完全な無偏向や最終的な真実を保証しません。
 
+v0.2：为分析保留原样引句和可复核摘录定位；文档读取、补充检索与谱系归组须披露实际工具和预算。无法确定性计算定位时沿用 `1.0` 并注明缺失，不伪造 `1.1` 校验信息。
+
+v0.2: retain verbatim analysis quotes and inspectable extract positions; disclose actual document tools, supplemental searches, and grouping limits. Without deterministic locator computation, use `1.0` with explicit gaps rather than inventing `1.1` verification metadata.
+
+v0.2：分析の原文引用と確認可能な抜粋位置を保持し、文書ツール、補足検索、系統分類の実際の制約を開示します。確定的に位置を計算できない場合は不足を明記した `1.0` を使い、`1.1` の検証情報を捏造しません。
+
 ## Read the complete instructions / 阅读完整说明 / 詳細手順
 
 Select the user's requested language, otherwise the conversation language; fall back to `zh-CN`. Read the matching usage, methodology, and report-format files before research. All three versions carry the same requirements.

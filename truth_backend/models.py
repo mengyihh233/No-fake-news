@@ -1,8 +1,8 @@
 from __future__ import annotations
 
-from typing import Literal
+from typing import Annotated, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, SecretStr
+from pydantic import BaseModel, ConfigDict, Field, SecretStr, StringConstraints
 
 
 Mode = Literal["evidence-only", "ai-summary"]
@@ -49,9 +49,45 @@ class ResearchRequest(StrictModel):
     ai: AIConfig = Field(default_factory=AIConfig)
     search: SearchConfig = Field(default_factory=SearchConfig)
     include_screenshots: bool = False
+    adaptive_search: bool = False
     sources: list[PreferredSource] = Field(default_factory=list, max_length=6)
     source_policy: Literal["balanced", "preferred-only"] = "balanced"
     source_credentials: list[SourceCredential] = Field(default_factory=list, max_length=6)
+
+
+class QuoteCitation(StrictModel):
+    # A quotation is an opaque substring: whitespace normalization would change it.
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=False)
+    evidence_id: str = Field(pattern=r"^E[1-9]\d*$")
+    quote: str = Field(min_length=1, max_length=2000)
+
+
+class AnalysisQuoteReference(QuoteCitation):
+    """Model input may select a server-issued passage instead of recopying it."""
+    quote: str = Field(default="", max_length=2000)
+    quote_id: str | None = Field(default=None, pattern=r"^E[1-9]\d*Q[1-9]\d*$", max_length=100)
+
+
+class QuoteLocator(StrictModel):
+    model_config = ConfigDict(extra="forbid", str_strip_whitespace=False)
+    start: int = Field(ge=0, le=5000)
+    end: int = Field(ge=1, le=5000)
+    prefix: str = Field(max_length=80)
+    suffix: str = Field(max_length=80)
+    excerpt_sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    match_count: int = Field(ge=1, le=5000)
+    coordinate_system: Literal["unicode_codepoints"] = "unicode_codepoints"
+
+
+class Citation(QuoteCitation):
+    locator: QuoteLocator | None = None
+    verification: Literal["exact_match"] | None = None
+    semantic_support: Literal["unverified"] = "unverified"
+
+
+class ExcerptMetadata(StrictModel):
+    sha256: str = Field(pattern=r"^[a-f0-9]{64}$")
+    coordinate_system: Literal["unicode_codepoints"] = "unicode_codepoints"
 
 
 class Claim(StrictModel):
@@ -60,6 +96,7 @@ class Claim(StrictModel):
     kind: Literal["fact", "causal", "prediction", "value", "mixed"]
     verdict: str | None = Field(default=None, max_length=1000)
     analysis: str | None = Field(default=None, max_length=5000)
+    citations: list[Citation] = Field(default_factory=list, max_length=24)
 
 
 class Screenshot(StrictModel):
@@ -78,12 +115,17 @@ class Evidence(StrictModel):
     retrieved_at: str
     source_type: Literal["primary", "secondary", "unknown"] = "unknown"
     content_kind: Literal["full_text", "search_extract", "snippet"]
-    excerpt: str = Field(max_length=5000)
+    excerpt: Annotated[str, StringConstraints(strip_whitespace=False)] = Field(max_length=5000)
     context: str = Field(default="", max_length=6000)
     source_family: str = Field(max_length=400)
     status: Literal["retrieved", "snippet_only", "unavailable"]
     claim_ids: list[str] = Field(default_factory=list, max_length=12)
     screenshots: list[Screenshot] = Field(default_factory=list, max_length=3)
+    excerpt_metadata: ExcerptMetadata | None = None
+    document_format: Literal["unknown", "html", "text", "pdf", "csv", "tsv"] = "unknown"
+    source_family_method: Literal["domain", "exact_content", "exact_excerpt", "near_duplicate"] = "domain"
+    source_family_evidence_ids: list[str] = Field(default_factory=list, max_length=24)
+    content_sha256: str | None = Field(default=None, pattern=r"^[a-f0-9]{64}$")
 
 
 class Link(StrictModel):
@@ -98,11 +140,12 @@ class TimelineItem(StrictModel):
     title: str = Field(max_length=300)
     detail: str = Field(max_length=3000)
     evidence_ids: list[str] = Field(min_length=1, max_length=24)
+    citations: list[Citation] = Field(default_factory=list, max_length=24)
 
 
 class Calculation(StrictModel):
     operation: Literal["count"]
-    source_quotes: list[str] = Field(max_length=100)
+    source_quotes: list[Annotated[str, StringConstraints(strip_whitespace=False)]] = Field(max_length=100)
     description: str = Field(min_length=10, max_length=3000)
 
 
@@ -111,6 +154,7 @@ class ChartPoint(StrictModel):
     value: float | None = Field(allow_inf_nan=False)
     evidence_ids: list[str] = Field(min_length=1, max_length=24)
     calculation: Calculation | None = None
+    citations: list[Citation] = Field(default_factory=list, max_length=100)
 
 
 class Chart(StrictModel):
@@ -128,6 +172,7 @@ class Comparison(StrictModel):
     differences: str = Field(max_length=3000)
     limits: str = Field(max_length=3000)
     evidence_ids: list[str] = Field(min_length=1, max_length=24)
+    citations: list[Citation] = Field(default_factory=list, max_length=24)
 
 
 class Observation(StrictModel):
@@ -135,6 +180,7 @@ class Observation(StrictModel):
     text: str = Field(min_length=1, max_length=5000)
     claim_ids: list[str] = Field(min_length=1, max_length=12)
     evidence_ids: list[str] = Field(min_length=1, max_length=24)
+    citations: list[Citation] = Field(default_factory=list, max_length=24)
 
 
 class Reasoning(StrictModel):
@@ -143,6 +189,7 @@ class Reasoning(StrictModel):
     claim_id: str
     text: str = Field(max_length=5000)
     kind: Literal["data", "logic", "history"]
+    citations: list[Citation] = Field(default_factory=list, max_length=24)
 
 
 class Summary(StrictModel):
@@ -150,6 +197,7 @@ class Summary(StrictModel):
     verdict: str = Field(max_length=1000)
     caveats: list[str] = Field(default_factory=list, max_length=20)
     evidence_ids: list[str] = Field(min_length=1, max_length=24)
+    citations: list[Citation] = Field(default_factory=list, max_length=24)
 
 
 class SearchLog(StrictModel):
@@ -158,10 +206,19 @@ class SearchLog(StrictModel):
     provider: str = Field(max_length=30)
     result_count: int = Field(ge=0, le=20)
     ran_at: str
+    round: Literal["initial", "supplemental"] = "initial"
+    gap_claim_ids: list[str] = Field(default_factory=list, max_length=12)
+
+
+class RetrievalGap(StrictModel):
+    claim_id: str = Field(pattern=r"^C[1-9]\d*$")
+    reason: Literal["no_keyword_match", "limited_families"]
+    query: str = Field(max_length=600)
+    attempted: bool
 
 
 class Report(StrictModel):
-    schema_version: Literal["1.0"] = "1.0"
+    schema_version: Literal["1.0", "1.1"] = "1.0"
     topic: str = Field(min_length=1, max_length=6000)
     mode: Mode
     depth: Depth = "standard"
@@ -182,7 +239,8 @@ class Report(StrictModel):
     questions: list[str] = Field(default_factory=list, max_length=20)
     summary: Summary | None = None
     summary_language: Language | None = None
-    search_log: list[SearchLog] = Field(default_factory=list, max_length=8)
+    search_log: list[SearchLog] = Field(default_factory=list, max_length=10)
+    retrieval_gaps: list[RetrievalGap] = Field(default_factory=list, max_length=12)
 
 
 class SummarizeRequest(StrictModel):
@@ -211,6 +269,7 @@ class Assessment(StrictModel):
     claim_id: str
     verdict: str = Field(max_length=1000)
     analysis: str = Field(max_length=5000)
+    citations: list[AnalysisQuoteReference] = Field(default_factory=list, max_length=24)
 
 
 class EvidenceAnnotation(StrictModel):
@@ -221,11 +280,32 @@ class EvidenceAnnotation(StrictModel):
 
 
 class VerifiedChartPoint(ChartPoint):
-    source_quote: str = Field(default="", max_length=1000)
+    source_quote: Annotated[str, StringConstraints(strip_whitespace=False)] = Field(default="", max_length=1000)
+    citations: list[AnalysisQuoteReference] = Field(default_factory=list, max_length=100)
 
 
 class VerifiedChart(Chart):
     points: list[VerifiedChartPoint] = Field(min_length=1, max_length=40)
+
+
+class AnalysisTimelineItem(TimelineItem):
+    citations: list[AnalysisQuoteReference] = Field(default_factory=list, max_length=24)
+
+
+class AnalysisComparison(Comparison):
+    citations: list[AnalysisQuoteReference] = Field(default_factory=list, max_length=24)
+
+
+class AnalysisObservation(Observation):
+    citations: list[AnalysisQuoteReference] = Field(default_factory=list, max_length=24)
+
+
+class AnalysisReasoning(Reasoning):
+    citations: list[AnalysisQuoteReference] = Field(default_factory=list, max_length=24)
+
+
+class AnalysisSummary(Summary):
+    citations: list[AnalysisQuoteReference] = Field(default_factory=list, max_length=24)
 
 
 class Analysis(StrictModel):
@@ -233,10 +313,10 @@ class Analysis(StrictModel):
     evidence_annotations: list[EvidenceAnnotation] = Field(default_factory=list, max_length=24)
     claim_assessments: list[Assessment] = Field(default_factory=list, max_length=12)
     links: list[Link] = Field(default_factory=list, max_length=120)
-    timeline: list[TimelineItem] = Field(default_factory=list, max_length=30)
+    timeline: list[AnalysisTimelineItem] = Field(default_factory=list, max_length=30)
     charts: list[VerifiedChart] = Field(default_factory=list, max_length=5)
-    comparisons: list[Comparison] = Field(default_factory=list, max_length=10)
-    observations: list[Observation] = Field(default_factory=list, max_length=40)
-    reasoning: list[Reasoning] = Field(default_factory=list, max_length=30)
+    comparisons: list[AnalysisComparison] = Field(default_factory=list, max_length=10)
+    observations: list[AnalysisObservation] = Field(default_factory=list, max_length=40)
+    reasoning: list[AnalysisReasoning] = Field(default_factory=list, max_length=30)
     questions: list[str] = Field(default_factory=list, max_length=20)
-    summary: Summary | None = None
+    summary: AnalysisSummary | None = None

@@ -1,16 +1,18 @@
 from __future__ import annotations
 
 import json
+import hashlib
 import os
 import re
+from copy import deepcopy
 from datetime import datetime, timezone
-from html.parser import HTMLParser
 from urllib.parse import urlsplit
 
 from pydantic import BaseModel, ValidationError
 
-from .models import AIConfig, Evidence, SearchConfig
+from .models import AIConfig, Analysis, Evidence, SearchConfig
 from .i18n import tr, error_message
+from .extraction import extract_document, extract_text_document, table_excerpt
 from .security import ServiceError, check_url_shape, pinned_request, sensitive_header_values, check_url_for_secrets
 
 
@@ -95,6 +97,63 @@ def decode_json(content: str) -> dict:
         raise ServiceError("invalid_model_output", "AI 未返回要求的 JSON 对象；请使用支持 JSON 指令的模型。") from None
 
 
+def _catalog_quote_ids(quote_catalog) -> list[str] | None:
+    """Only a complete, bounded server catalog can constrain model quote choices."""
+    if not isinstance(quote_catalog, list) or not 1 <= len(quote_catalog) <= 2400:
+        return None
+    ids, seen = [], set()
+    for entry in quote_catalog:
+        if not isinstance(entry, dict) or set(entry) != {"quote_id", "evidence_id", "quote"}:
+            return None
+        quote_id, evidence_id, quote = entry["quote_id"], entry["evidence_id"], entry["quote"]
+        if (not isinstance(quote_id, str) or len(quote_id) > 100
+                or not isinstance(evidence_id, str) or not isinstance(quote, str)
+                or not quote.strip() or len(quote) > 2000 or quote_id in seen):
+            return None
+        match = re.fullmatch(r"(E[1-9]\d*)Q[1-9]\d*", quote_id, flags=re.ASCII)
+        if match is None or match.group(1) != evidence_id:
+            return None
+        seen.add(quote_id)
+        ids.append(quote_id)
+    return ids
+
+
+def _prompt_schema(schema: type[BaseModel], require_exact_citations: bool = False, quote_catalog=None) -> dict:
+    """Strengthen the generation contract without changing legacy report parsers."""
+    result = deepcopy(schema.model_json_schema())
+    if schema is not Analysis:
+        return result
+
+    ids = _catalog_quote_ids(quote_catalog)
+    reference = result.get("$defs", {}).get("AnalysisQuoteReference")
+    if ids and isinstance(reference, dict) and "evidence_id" in reference.get("properties", {}):
+        reference["properties"] = {"evidence_id": reference["properties"]["evidence_id"],
+                                   "quote_id": {"type": "string", "enum": ids, "title": "Quote Id"}}
+        reference["required"] = ["evidence_id", "quote_id"]
+        reference["additionalProperties"] = False
+    if require_exact_citations is not True:
+        return result
+
+    def visit(node):
+        if isinstance(node, dict):
+            properties = node.get("properties", {})
+            if isinstance(properties, dict) and "citations" in properties and "source_quote" not in properties:
+                citation_schema = properties["citations"]
+                if isinstance(citation_schema, dict) and citation_schema.get("type") == "array":
+                    citation_schema["minItems"] = max(1, citation_schema.get("minItems", 0))
+                    required = node.setdefault("required", [])
+                    if "citations" not in required:
+                        required.append("citations")
+            for value in node.values():
+                visit(value)
+        elif isinstance(node, list):
+            for value in node:
+                visit(value)
+
+    visit(result)
+    return result
+
+
 async def complete(config: AIConfig, system: str, data: dict, schema: type[BaseModel]) -> BaseModel:
     config = resolve_ai(config)
     if not config.model:
@@ -111,7 +170,7 @@ async def complete(config: AIConfig, system: str, data: dict, schema: type[BaseM
     payload = {
         "model": config.model,
         "messages": [
-            {"role": "system", "content": system + "\n仅输出一个 JSON 对象，遵守以下 JSON Schema：\n" + json.dumps(schema.model_json_schema(), ensure_ascii=False)},
+            {"role": "system", "content": system + "\n仅输出一个 JSON 对象，遵守以下 JSON Schema：\n" + json.dumps(_prompt_schema(schema, data.get("require_exact_citations"), data.get("quote_catalog")), ensure_ascii=False)},
             {"role": "user", "content": json.dumps(data, ensure_ascii=False)},
         ],
         "stream": False,
@@ -249,43 +308,9 @@ def parse_deepseek_search(data: dict, *, domains: list[str] | None = None, token
     return output
 
 
-class TextExtractor(HTMLParser):
-    def __init__(self):
-        super().__init__(convert_charrefs=True)
-        self.skip = 0
-        self.parts: list[str] = []
-
-    def handle_starttag(self, tag, attrs):
-        if tag in {"script", "style", "noscript", "svg"}:
-            self.skip += 1
-        elif tag in {"p", "div", "br", "tr", "li", "h1", "h2", "h3"}:
-            self.parts.append("\n")
-
-    def handle_endtag(self, tag):
-        if tag in {"script", "style", "noscript", "svg"} and self.skip:
-            self.skip -= 1
-
-    def handle_data(self, data):
-        if not self.skip:
-            self.parts.append(data)
-
-
 def extract_text(content: bytes, content_type: str) -> str:
-    if "html" not in content_type and "text/plain" not in content_type and "xhtml" not in content_type:
-        raise ServiceError("unsupported_content", "此版本只提取 HTML / 纯文本正文；PDF、音视频需人工查阅。")
-    # HTTP bodies are commonly UTF-8; honor declared encodings without executing content.
-    match = re.search(r"charset=[\"']?([\w-]+)", content_type, re.I)
-    encoding = match.group(1) if match else "utf-8"
-    try:
-        decoded = content.decode(encoding, errors="replace")
-    except LookupError:
-        decoded = content.decode("utf-8", errors="replace")
-    if "html" in content_type:
-        parser = TextExtractor()
-        parser.feed(decoded)
-        decoded = " ".join(parser.parts)
-    text = re.sub(r"[ \t\r\f\v]+", " ", decoded)
-    return re.sub(r"\n\s*\n+", "\n", text).strip()[:16000]
+    """Synchronous compatibility entry point for bounded non-PDF extraction."""
+    return extract_text_document(content, content_type).text
 
 
 def select_excerpt(text: str, query: str = "", max_length: int = 3000) -> tuple[str, bool]:
@@ -343,8 +368,8 @@ def select_excerpt(text: str, query: str = "", max_length: int = 3000) -> tuple[
     return "\n".join(chunks)[:max_length], True
 
 
-async def fetch_evidence(row: dict, index: int, query: str = "", max_excerpt: int = 3000, language: str = "zh-CN", headers: dict[str, str] | None = None) -> tuple[Evidence | None, str]:
-    secrets = sensitive_header_values(headers)
+async def fetch_evidence(row: dict, index: int, query: str = "", max_excerpt: int = 3000, language: str = "zh-CN", headers: dict[str, str] | None = None, known_secrets: list[str] | None = None) -> tuple[Evidence | None, str]:
+    secrets = sorted({value for value in [*sensitive_header_values(headers), *(known_secrets or [])] if value}, key=len, reverse=True)
     try:
         check_url_shape(row["url"])
         check_url_for_secrets(row["url"], secrets)
@@ -356,34 +381,53 @@ async def fetch_evidence(row: dict, index: int, query: str = "", max_excerpt: in
     context = tr("正文未直接访问；仅保留搜索供应商提供的摘录，不能视为全文核验。", "The source body was not accessed directly. Only the search provider's extract is retained; this is not full-text verification.", "本文には直接アクセスしていません。検索プロバイダーの抜粋のみ保持しており、全文を検証したことにはなりません。", language)
     final_url = row["url"]
     limitation = ""
+    document, document_format, content_sha256 = None, "unknown", None
     try:
-        fetched = await pinned_request(row["url"], redirects=4, timeout=12, max_bytes=1_500_000, headers=headers)
+        fetched = await pinned_request(row["url"], redirects=4, timeout=12, max_bytes=1_500_000, headers=headers,
+                                       known_secrets=secrets)
         check_url_for_secrets(fetched.url, secrets)
         if fetched.status_code >= 400:
             raise ServiceError("source_http_error", f"来源返回 HTTP {fetched.status_code}。")
-        extracted = extract_text(fetched.content, fetched.content_type)
-        if len(extracted) < 80:
+        document = await extract_document(fetched.content, fetched.content_type, language=language)
+        if not document.text.strip() or (len(document.text) < 80 and document.format in {"html", "text"} and not document.has_tables):
             raise ServiceError("empty_text", "正文不足 80 字符，可能需要脚本、登录或人工访问。")
-        text, kind, status, final_url = extracted, "full_text", "retrieved", fetched.url
-        context = tr(f"直接抓取页面文字（最多 16,000 字符）；展示摘录最多 {max_excerpt:,} 字符。未绕过付费墙、登录或访问限制。", f"Page text was retrieved directly (up to 16,000 characters); the displayed extract is limited to {max_excerpt:,} characters. Paywalls, login, and access controls were not bypassed.", f"ページ本文を直接取得しました（最大 16,000 文字）。表示する抜粋は最大 {max_excerpt:,} 文字です。有料壁、ログイン、アクセス制限は回避していません。", language)
+        text, kind, status, final_url = document.text, "full_text", "retrieved", fetched.url
+        document_format = document.format
+        content_sha256 = hashlib.sha256(fetched.content).hexdigest()
+        context = tr(f"直接抓取来源正文（最多 16,000 字符）；展示摘录最多 {max_excerpt:,} 字符。未绕过付费墙、登录或访问限制。原始响应字节指纹仅标识本次内容，不证明真实性。", f"Source body text was retrieved directly (up to 16,000 characters); the displayed extract is limited to {max_excerpt:,} characters. Paywalls, login, and access controls were not bypassed. The response-byte fingerprint identifies this content; it does not prove authenticity.", f"情報源の本文を直接取得しました（最大 16,000 文字）。表示する抜粋は最大 {max_excerpt:,} 文字です。有料壁、ログイン、アクセス制限は回避していません。応答バイトの指紋は今回の内容を識別するもので、真実性を証明しません。", language)
+        if document.notices:
+            details = " ".join(document.notices)
+            context += " " + details
+            limitation = tr(f"来源 E{index} 的抽取范围与限制：{details}", f"Source E{index} extraction scope and limitations: {details}", f"情報源 E{index} の抽出範囲と制約：{details}", language)
     except ServiceError as exc:
         if exc.code == "credentials_in_public_input":
             return None, tr(f"来源 E{index} 的 URL 或重定向含已知凭据，已阻止访问和输出。", f"Source E{index} contained a known credential in a URL or redirect; access and report output were blocked.", f"情報源 E{index} の URL またはリダイレクトに既知の認証情報が含まれるため、アクセスとレポート出力をブロックしました。", language)
         if exc.code == "unsafe_url":
             return None, tr(f"来源 E{index} 解析或重定向到非公网目标，已排除。", f"Source E{index} resolved or redirected to a non-public target and was excluded.", f"情報源 E{index} は非公開アドレスに解決またはリダイレクトされたため、除外しました。", language)
-        detail = error_message(exc.code, exc.message, language)
+        document = None
+        detail = exc.message if exc.code.startswith("pdf_") or exc.code in {"unsupported_content", "document_too_large", "invalid_table"} else error_message(exc.code, exc.message, language)
         limitation = tr(f"来源 E{index} 未取得可用正文：{detail}", f"Source E{index}: usable body text was not retrieved. {detail}", f"情報源 E{index}：利用可能な本文を取得できませんでした。{detail}", language)
         context += " " + detail
     host = urlsplit(final_url).hostname or "未知"
-    excerpt, selected = select_excerpt(text, query, max_length=max_excerpt)
+    if document is not None and document.has_tables:
+        excerpt, partial_row = table_excerpt(document, max_excerpt)
+        selected = False
+        context += tr(" 表格摘录优先保留原始顺序、开头表头附近及完整行，未按关键词跳选行；有限摘录不代表完整表格。", " Table excerpts retain original order, the beginning/header context, and complete rows where possible; rows are not selected by query keywords. A limited extract is not the complete table.", " 表の抜粋は元の順序、先頭・見出し付近、可能な限り完全な行を保持します。検索語による行の選別は行いません。限られた抜粋は表全体ではありません。", language)
+        if partial_row:
+            detail = tr("首行超过摘录字符预算，已在字符上限截断，列对应可能不完整，必须查看原文。", "The first row exceeded the extract character budget and was cut at the limit; column correspondence may be incomplete. Inspect the original.", "先頭行が抜粋文字数の上限を超えたため切り詰めました。列の対応が不完全な場合があるため、原文を確認してください。", language)
+            context += " " + detail
+            limitation = (limitation + " " + detail).strip()
+    else:
+        excerpt, selected = select_excerpt(text, query, max_length=max_excerpt)
     if selected:
         context += tr(" 服务器按主题/查询关键词选取原文片段并保留邻近语境，[…] 表示不连续；关键词摘录仍可能遗漏限定条件，需打开原文复核。", " The server selected original passages using topic/query keywords and nearby context. […] marks omitted passages; qualifications may still be missing, so check the original page.", " サーバーがテーマ・検索語に基づいて原文と周辺文脈を選びました。[…] は省略箇所です。限定条件が欠ける可能性があるため、原ページを確認してください。", language)
-    elif len(text) > max_excerpt:
+    elif len(text) > max_excerpt and not (document is not None and document.has_tables):
         context += tr(f" 未定位到可靠关键词片段，展示正文前 {max_excerpt:,} 字符，可能包含导航或无关内容。", f" No reliable keyword passage was located. The first {max_excerpt:,} body characters are shown and may include navigation or unrelated text.", f"適切なキーワード箇所が見つからなかったため、本文の先頭 {max_excerpt:,} 文字を表示しています。ナビゲーションや無関係な内容を含む場合があります。", language)
     evidence = Evidence(
         id=f"E{index}", title=row.get("title") or tr("无标题", "Untitled", "無題", language), url=final_url, publisher=host,
         published_at=row.get("published_at"), retrieved_at=now(), content_kind=kind,
         excerpt=excerpt, context=context, source_family=host.removeprefix("www."), status=status,
+        document_format=document_format, content_sha256=content_sha256,
     )
     # The analysis receives precisely the stored excerpt; unshown text cannot justify its chart.
     return evidence, limitation

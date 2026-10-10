@@ -7,6 +7,7 @@ const assert = require('node:assert/strict');
 const fs = require('node:fs');
 const path = require('node:path');
 const vm = require('node:vm');
+const { createHash } = require('node:crypto');
 
 const root = path.resolve(__dirname, '..');
 const source = fs.readFileSync(path.join(root, 'frontend', 'app.js'), 'utf8');
@@ -39,6 +40,7 @@ function browserData() {
     ${portion('function pick(', 'function getAISettings(')}
     ${portion('function isLoopbackAI(', 'function saveSettings(')}
     ${portion('function normalizeImport(', 'async function importReport(')}
+    ${portion('function sourceDomId(', 'function focusSource(')}
     ${portion('function observationLabel(', 'function renderObservations(')}
     ${portion('function intentLabel(', 'function filename(')}
   `, context);
@@ -201,16 +203,16 @@ test('depth and neutral observations survive both modes while AI conclusions rem
   }
 });
 
-test('deep reports can import 24 sources, 8 searches and 24-source observations', () => {
+test('deep reports can import 24 sources, 10 searches and 24-source observations', () => {
   const browser = browserData();
   const report = structuredClone(demo);
   report.depth = 'deep';
   report.evidence = Array.from({ length: 24 }, (_, i) => ({ ...structuredClone(demo.evidence[0]), id: `E${i + 1}`, claim_ids: ['C1'] }));
-  report.search_log = Array.from({ length: 8 }, (_, i) => ({ query: `query ${i}`, intent: 'neutral', provider: 'tavily', result_count: 1, ran_at: '2026-10-09' }));
+  report.search_log = Array.from({ length: 10 }, (_, i) => ({ query: `query ${i}`, intent: 'neutral', provider: 'tavily', result_count: 1, ran_at: '2026-10-09' }));
   report.observations = [{ kind: 'data', text: '对照全部来源的数据口径。', claim_ids: ['C1'], evidence_ids: report.evidence.map(source => source.id) }];
   const imported = browser.run('normalizeImport(input)', report);
   assert.equal(imported.evidence.length, 24);
-  assert.equal(imported.search_log.length, 8);
+  assert.equal(imported.search_log.length, 10);
   assert.equal(imported.observations[0].evidence_ids.length, 24);
   const tooManySources = structuredClone(report);
   tooManySources.evidence.push({ ...structuredClone(report.evidence[0]), id: 'E25' });
@@ -231,4 +233,298 @@ test('import validates observation citations, non-empty premises and depth value
   report.observations[0].claim_ids = ['C1'];
   report.depth = 'unlimited';
   assert.throws(() => browser.run('normalizeImport(input)', report), /分析深度/);
+});
+
+function exactCitation(excerpt, quote, evidence_id = 'E1') {
+  const startUTF16 = excerpt.indexOf(quote);
+  assert(startUTF16 >= 0);
+  const chars = Array.from(excerpt);
+  const start = Array.from(excerpt.slice(0, startUTF16)).length;
+  const end = start + Array.from(quote).length;
+  let match_count = 0, cursor = startUTF16;
+  while (cursor >= 0) { match_count++; cursor = excerpt.indexOf(quote, cursor + 1); }
+  return {
+    evidence_id, quote, verification: 'exact_match', semantic_support: 'unverified',
+    locator: { start, end, prefix: chars.slice(Math.max(0, start - 80), start).join(''), suffix: chars.slice(end, end + 80).join(''), excerpt_sha256: createHash('sha256').update(excerpt).digest('hex'), match_count, coordinate_system: 'unicode_codepoints' }
+  };
+}
+
+function citedReport() {
+  const report = structuredClone(demo);
+  report.schema_version = '1.1';
+  report.mode = 'ai-summary';
+  report.evidence[0].excerpt = '前文 🧭 第一行\n  原句 🛰️ 保留空白。\n后文。原句 🛰️ 保留空白。';
+  const citation = exactCitation(report.evidence[0].excerpt, '原句 🛰️ 保留空白。');
+  report.evidence[0].excerpt_metadata = { sha256: citation.locator.excerpt_sha256, coordinate_system: 'unicode_codepoints', api_key: 'SECRET_METADATA' };
+  report.evidence[0].content_sha256 = 'b'.repeat(64);
+  report.evidence[0].document_format = 'pdf';
+  report.evidence[0].source_family_method = 'near_duplicate';
+  report.evidence[0].source_family_evidence_ids = ['E2'];
+  report.claims[0].citations = [structuredClone(citation)];
+  report.claims[0].verdict = 'PRIVATE_VERDICT';
+  report.observations = [{ kind: 'data', text: '资料比对', claim_ids: ['C1'], evidence_ids: ['E1'], citations: [structuredClone(citation)] }];
+  report.timeline = [{ date: '2026-10-09', title: '记录', detail: '原始记录', evidence_ids: ['E1'], citations: [structuredClone(citation)] }];
+  report.comparisons = [{ case: '参照', date: '2026', similarities: '数据口径', differences: '边界', limits: '有限', evidence_ids: ['E1'], citations: [structuredClone(citation)] }];
+  report.charts = [{ title: '图表', unit: '次', kind: 'bar', points: [{ label: '记录', value: 1, evidence_ids: ['E1'], citations: [structuredClone(citation)] }] }];
+  report.reasoning = [{ id: 'R1', claim_id: 'C1', premise_ids: ['E1'], kind: 'logic', text: 'PRIVATE_REASONING', citations: [structuredClone(citation)] }];
+  report.summary = { text: 'PRIVATE_SUMMARY', verdict: 'PRIVATE_SUMMARY_VERDICT', evidence_ids: ['E1'], caveats: [], citations: [structuredClone(citation)] };
+  report.search_log = [{ query: 'query', provider: 'tavily', intent: 'counter', result_count: 1, ran_at: '2026-10-09', round: 'supplemental', gap_claim_ids: ['C1'] }];
+  report.retrieval_gaps = [{ claim_id: 'C1', reason: 'limited_families', query: '补搜', attempted: true }];
+  return report;
+}
+
+test('1.1 import and evidence export preserve exact quotations and neutral metadata using nested allowlists', () => {
+  const browser = browserData();
+  const report = citedReport();
+  report.claims[0].citations[0].password = 'SECRET_CITATION';
+  report.claims[0].citations[0].locator.token = 'SECRET_LOCATOR';
+  report.retrieval_gaps[0].verdict = 'PRIVATE_GAP_VERDICT';
+  const imported = browser.run('normalizeImport(input)', report);
+  assert.equal(imported.schema_version, '1.1');
+  assert.equal(imported.summary.citations[0].quote, report.summary.citations[0].quote);
+  const projected = browser.run('evidenceProjection(input)', imported);
+  assert.deepEqual(Object.keys(projected.claims[0]).sort(), ['id', 'kind', 'text']);
+  for (const item of [projected.observations[0], projected.timeline[0], projected.comparisons[0], projected.charts[0].points[0]]) {
+    assert.equal(item.citations[0].quote, report.claims[0].citations[0].quote);
+    assert.equal(item.citations[0].locator.match_count, 2);
+    assert.equal(item.citations[0].semantic_support, 'unverified');
+  }
+  assert.equal(projected.evidence[0].document_format, 'pdf');
+  assert.equal(projected.evidence[0].source_family_method, 'near_duplicate');
+  assert.deepEqual(Array.from(projected.evidence[0].source_family_evidence_ids), ['E2']);
+  assert.equal(projected.evidence[0].content_sha256, 'b'.repeat(64));
+  assert.equal(projected.search_log[0].round, 'supplemental');
+  assert.equal(projected.search_log[0].gap_claim_ids[0], 'C1');
+  assert.equal(projected.retrieval_gaps[0].attempted, true);
+  assert(!JSON.stringify(projected).includes('PRIVATE_'));
+  assert(!JSON.stringify(imported).includes('SECRET_'));
+});
+
+test('summary-to-evidence JSON and static HTML drop assessment citations and retain source text and neutral citations', async () => {
+  const browser = browserData();
+  const escape = value => String(value).replace(/[&<>"']/g, char => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[char]));
+  class Node {
+    constructor(tag, text = '') { this.tagName = tag.toUpperCase(); this.attributes = {}; this.className = ''; this.children = []; this.value = text; this.parent = null; }
+    append(...nodes) { nodes.forEach(node => { if (typeof node === 'string') node = new Node('#text',node); node.remove(); node.parent = this; this.children.push(node); }); }
+    replaceChildren(...nodes) { this.children.forEach(node => {node.parent=null;}); this.children=[];this.value='';this.append(...nodes); }
+    remove() { if(this.parent){const siblings=this.parent.children;siblings.splice(siblings.indexOf(this),1);this.parent=null;} }
+    replaceWith(node) {const parent=this.parent;if(!parent)return;const index=parent.children.indexOf(this);node.remove();parent.children[index]=node;node.parent=parent;this.parent=null;}
+    setAttribute(key,value) {this.attributes[key]=String(value);}
+    getAttribute(key) {return this.attributes[key] ?? null;}
+    hasAttribute(key) {return key in this.attributes;}
+    removeAttribute(key) {delete this.attributes[key];}
+    addEventListener() {}
+    get classList() {return {contains:value=>this.className.split(/\s+/).includes(value)};}
+    get firstChild() {return this.children[0] || null;}
+    get firstElementChild() {return this.children.find(node=>!node.tagName.startsWith('#')) || null;}
+    get textContent() {return this.value + this.children.map(node=>node.textContent).join('');}
+    set textContent(value) {this.replaceChildren();this.value=String(value);}
+    querySelectorAll(selector) {
+      const matches = node => selector.startsWith('.') ? node.classList.contains(selector.slice(1)) : selector.startsWith('#') ? node.attributes.id===selector.slice(1) : selector.startsWith('[') ? node.hasAttribute(selector.slice(1,-1).split('=')[0]) : node.tagName===selector.toUpperCase();
+      return this.children.flatMap(node=>[...(matches(node)?[node]:[]),...node.querySelectorAll(selector)]);
+    }
+    querySelector(selector) {return this.querySelectorAll(selector)[0] || null;}
+    cloneNode(deep) {const clone=new Node(this.tagName,this.value);clone.attributes={...this.attributes};clone.className=this.className;if(deep)clone.append(...this.children.map(node=>node.cloneNode(true)));return clone;}
+    get outerHTML() {
+      if(this.tagName==='#TEXT')return escape(this.value);
+      if(this.tagName==='#FRAGMENT')return this.children.map(node=>node.outerHTML).join('');
+      const attrs={...this.attributes,...(this.className?{class:this.className}:{}),...(this.lang?{lang:this.lang}:{}),...(this.open?{open:''}:{})};
+      return `<${this.tagName.toLowerCase()}${Object.entries(attrs).map(([key,value])=>` ${key}="${escape(value)}"`).join('')}>${escape(this.value)}${this.children.map(node=>node.outerHTML).join('')}</${this.tagName.toLowerCase()}>`;
+    }
+  }
+  const rootNode = new Node('div');
+  const article = new Node('article');
+  const area = new Node('div');area.setAttribute('id','evidence-area');
+  article.append(area);rootNode.append(article);
+  browser.context.document = {
+    createElement:tag=>new Node(tag), createTextNode:value=>new Node('#text',String(value)), createDocumentFragment:()=>new Node('#fragment'),
+    implementation:{createHTMLDocument:()=>{const documentElement=new Node('html'),head=new Node('head'),body=new Node('body');documentElement.append(head,body);return {documentElement,head,body};}}
+  };
+  browser.context.$ = id => id==='report'?rootNode:id==='evidence-area'?area:null;
+  browser.context.fetch = async () => ({ok:true,text:async()=>''});
+  browser.context.embedLocalCaptures = async () => ({embedded:0,external:0});
+  browser.context.toast = () => {};
+  browser.context.showError = message => {throw new Error(message);};
+  browser.context.filename = extension => `report.${extension}`;
+  const downloads = {};
+  browser.context.download = (content,_type,name) => {downloads[name]=content;};
+  vm.runInContext(`
+    ${portion('function el(', 'function svg(')}
+    ${portion('function externalLink(', 'function dateLabel(')}
+    ${portion('function hostLabel(', 'function pick(')}
+    ${portion('function sourceReferences(', 'function sourceDomId(')}
+    ${portion('function actionButton(', 'function renderReport(')}
+    ${portion('function kindLabel(', 'function renderEvidenceArea(')}
+    ${portion('function renderEvidenceArea(', 'function sourceTypeLabel(')}
+    ${portion('function sourceTypeLabel(', 'function renderSummary(')}
+    ${portion('function exportJSON(', 'async function embedLocalCaptures(')}
+    ${portion('async function exportHTML(', "  $('research-form')")}
+  `, browser.context);
+  const report = citedReport();
+  report.evidence[0].excerpt = 'ASSESSMENT_ONLY_ORIGINAL passage. NEUTRAL_ORIGINAL passage.';
+  report.evidence[0].excerpt_metadata.sha256 = createHash('sha256').update(report.evidence[0].excerpt).digest('hex');
+  report.evidence.forEach(source=>{source.screenshots=[];});
+  report.claims[0].citations = [exactCitation(report.evidence[0].excerpt,'ASSESSMENT_ONLY_ORIGINAL')];
+  for (const item of [report.observations[0],report.timeline[0],report.comparisons[0],report.charts[0].points[0]]) item.citations = [exactCitation(report.evidence[0].excerpt,'NEUTRAL_ORIGINAL')];
+  for (const item of [report.reasoning[0],report.summary]) item.citations = [exactCitation(report.evidence[0].excerpt,'ASSESSMENT_ONLY_ORIGINAL')];
+  browser.context.state.report = browser.run('evidenceProjection(normalizeImport(input))',report);
+  browser.context.state.filter = null;
+  browser.run('renderEvidenceArea()');
+  article.append(browser.run('renderCitations(state.report.observations[0].citations)'));
+  const claimMarkup = area.querySelector('.claim-grid').outerHTML;
+  assert(!claimMarkup.includes('ASSESSMENT_ONLY_ORIGINAL'));
+  assert.equal(area.querySelector('.claim-grid').querySelectorAll('.citation-details').length,0);
+  browser.run('exportJSON()');
+  await browser.run('exportHTML()');
+  const json = JSON.parse(downloads['report.json']);
+  assert.deepEqual(Object.keys(json.claims[0]).sort(),['id','kind','text']);
+  assert.equal(json.evidence[0].excerpt,report.evidence[0].excerpt);
+  assert.equal(json.observations[0].citations[0].quote,'NEUTRAL_ORIGINAL');
+  const html = downloads['report.html'];
+  assert(html.includes('ASSESSMENT_ONLY_ORIGINAL passage. NEUTRAL_ORIGINAL passage.'));
+  assert(html.includes('class="citation-quote">NEUTRAL_ORIGINAL</blockquote>'));
+  assert(!html.includes('class="citation-quote">ASSESSMENT_ONLY_ORIGINAL</blockquote>'));
+  assert(!html.includes('PRIVATE_'));
+});
+
+test('quotation locators use code points, preserve whitespace and select the first repeated occurrence', () => {
+  const browser = browserData();
+  const report = citedReport();
+  const citation = report.claims[0].citations[0];
+  const checked = browser.run('citationPosition(input.citation,input.source)', {citation,source:report.evidence[0]});
+  assert.equal(checked.start, Array.from(report.evidence[0].excerpt.split(citation.quote)[0]).length);
+  assert.notEqual(checked.start, report.evidence[0].excerpt.indexOf(citation.quote));
+  assert.equal(checked.match_count, 2);
+  const broken = structuredClone(report);
+  broken.claims[0].citations[0].locator.start++;
+  assert.throws(() => browser.run('normalizeImport(input)', broken), /精确引文/);
+  for (const mutate of [
+    quote => { quote.quote = '原句 🛰️  保留空白。'; },
+    quote => { quote.locator.prefix = '虚构上下文'; },
+    quote => { quote.locator.match_count = 1; },
+    quote => { quote.locator.excerpt_sha256 = 'c'.repeat(64); },
+    quote => { quote.locator.coordinate_system = 'utf16'; },
+    quote => { quote.semantic_support = 'verified'; },
+    quote => { quote.evidence_id = 'E999'; }
+  ]) {
+    const invalid = structuredClone(report);
+    mutate(invalid.claims[0].citations[0]);
+    assert.throws(() => browser.run('normalizeImport(input)', invalid));
+  }
+});
+
+test('legacy quotations need no locator, but 1.1 matching markers require position metadata', () => {
+  const browser = browserData();
+  const report = citedReport();
+  for (const version of ['1.0', '1.1']) {
+    const input = structuredClone(report);
+    input.schema_version = version;
+    delete input.claims[0].citations[0].locator;
+    delete input.claims[0].citations[0].verification;
+    if (version === '1.0') assert.equal(browser.run('normalizeImport(input)', input).claims[0].citations[0].quote, report.claims[0].citations[0].quote);
+    else assert.throws(() => browser.run('normalizeImport(input)', input), /精确引文/);
+  }
+  const legacy = browser.run('normalizeImport(input)', demo);
+  assert.equal(legacy.schema_version, '1.0');
+  assert.equal('citations' in legacy.claims[0], false);
+});
+
+test('new metadata rejects invalid types, fingerprints, enums and dangling references', () => {
+  const browser = browserData();
+  const mutations = [
+    input => { input.evidence[0].content_sha256 = 'short'; },
+    input => { input.evidence[0].excerpt_metadata.sha256 = 123; },
+    input => { input.evidence[0].document_format = 'javascript'; },
+    input => { input.evidence[0].source_family_method = 'proven_independent'; },
+    input => { input.evidence[0].source_family_evidence_ids = ['E999']; },
+    input => { input.retrieval_gaps[0].attempted = 'true'; },
+    input => { input.retrieval_gaps[0].reason = 'proven_false'; },
+    input => { delete input.retrieval_gaps[0].reason; },
+    input => { input.retrieval_gaps[0].claim_id = 'C999'; },
+    input => { input.search_log[0].round = 'confirmed'; },
+    input => { input.search_log[0].gap_claim_ids = ['C999']; },
+    input => { input.retrieval_gaps = Array.from({length:13}, () => input.retrieval_gaps[0]); }
+  ];
+  for (const mutate of mutations) { const input = citedReport(); mutate(input); assert.throws(() => browser.run('normalizeImport(input)', input)); }
+});
+
+test('chart points allow 100 distinct quotations while other entries remain limited to 24', () => {
+  const browser = browserData();
+  const report = citedReport();
+  const quoteStrings = Array.from({length:100}, (_, index) => `[item${index}]`);
+  report.evidence[1].excerpt = quoteStrings.join(' ');
+  const quotes = quoteStrings.map(quote => exactCitation(report.evidence[1].excerpt, quote, 'E2'));
+  report.charts[0].points[0].evidence_ids = ['E2'];
+  report.charts[0].points[0].citations = quotes;
+  assert.equal(browser.run('normalizeImport(input)', report).charts[0].points[0].citations.length, 100);
+  const over = structuredClone(report);
+  over.charts[0].points[0].citations.push(quotes[0]);
+  assert.throws(() => browser.run('normalizeImport(input)', over), /数量超出/);
+  report.claims[0].citations = quotes.slice(0,25);
+  assert.throws(() => browser.run('normalizeImport(input)', report), /数量超出/);
+});
+
+test('citation UI keeps original quotation text and discloses excerpt-only matching in all three languages', () => {
+  const browser = browserData();
+  browser.context.el = (tag, cls, text, attrs = {}) => ({ tag, cls, text, attrs, children: [], append(...nodes) { this.children.push(...nodes); }, setAttribute(key,value) { this.attrs[key] = value; } });
+  browser.context.sourceReferences = ids => ids.join(',');
+  browser.context.externalLink = (label, url) => browser.context.el('a', '', label, {href:url});
+  browser.context.actionButton = label => browser.context.el('button', '', label);
+  browser.context.document = { createTextNode: value => value };
+  const report = citedReport();
+  browser.context.state.report = report;
+  for (const language of ['zh-CN','en','ja']) {
+    browser.run('I18n.setLanguage(input)', language);
+    const view = browser.run('renderCitations(input)', report.claims[0].citations);
+    assert(JSON.stringify(view).includes(report.claims[0].citations[0].quote));
+    assert(JSON.stringify(view).includes(browser.run("t('citation.disclosure')")));
+    assert(JSON.stringify(view).includes(browser.run("t('citation.repeated',{count:2})")));
+    assert(JSON.stringify(view).includes('data-citation-source'));
+    assert.equal(browser.run('renderCitations(input)', []).text, browser.run("t('citation.missing')"));
+  }
+});
+
+test('adaptive search is opt-in and only its nonsecret preference is persisted and restored', () => {
+  const browser = browserData();
+  const html = fs.readFileSync(path.join(root, 'frontend/index.html'), 'utf8');
+  assert.match(html, /<input id="adaptive-search" type="checkbox" aria-describedby="adaptive-help">/);
+  const controls = { 'adaptive-search': {checked:true}, 'include-screenshots':{checked:true}, 'research-depth':{value:'deep'}, 'search-provider':{value:'brave'}, 'ai-base-url':{value:''}, 'ai-model':{value:''} };
+  browser.context.$ = id => controls[id];
+  browser.context.getAISettings = () => ({base_url:'http://localhost:11434/v1',model:'local',api_key:'PRIVATE_API_KEY'});
+  browser.context.updateConnectionStatus = () => {};
+  let saved;
+  browser.context.localStorage = { setItem:(_key,value) => { saved=value; }, getItem:() => saved };
+  vm.runInContext(`const settingsKey = 'test'; ${portion('function saveSettings(', 'function updateConnectionStatus(')}`, browser.context);
+  browser.run('saveSettings()');
+  assert.equal(JSON.parse(saved).adaptive_search,true);
+  assert(!saved.includes('PRIVATE'));
+  controls['adaptive-search'].checked = false;
+  browser.run('restoreSettings()');
+  assert.equal(controls['adaptive-search'].checked,true);
+});
+
+test('research submits the actual adaptive selection alongside language, depth and source scope', async () => {
+  const browser = browserData();
+  const controls = { topic:{value:'A concrete question'}, 'research-depth':{value:'standard'}, 'adaptive-search':{checked:false}, 'include-screenshots':{checked:false} };
+  browser.context.$ = id => controls[id];
+  browser.context.state.pending = false;
+  browser.context.document = {querySelector:() => ({value:'evidence-only'})};
+  browser.context.validateAI = () => ({base_url:'http://localhost:11434/v1',model:'local',api_key:''});
+  browser.context.getSearchSettings = () => ({provider:'tavily',api_key:'TEST_ONLY'});
+  browser.context.searchCredentialReady = () => true;
+  browser.context.saveSettings = () => {};
+  browser.context.Workspace = {getSourceRequest:() => ({sources:[{url:'https://example.org/source',label:'source'}],source_policy:'preferred-only',source_credentials:[]})};
+  let request;
+  browser.context.requestJSON = async (endpoint,options) => {request={endpoint,...JSON.parse(options.body)};return null;};
+  vm.runInContext(portion('async function submitResearch(', 'async function loadDemo('), browser.context);
+  for (const enabled of [false,true]) {
+    controls['adaptive-search'].checked = enabled;
+    await browser.run('submitResearch({preventDefault(){}})');
+    assert.equal(request.endpoint,'/api/research');
+    assert.equal(request.adaptive_search,enabled);
+    assert.equal(request.language,'zh-CN');
+    assert.equal(request.depth,'standard');
+    assert.equal(request.source_policy,'preferred-only');
+    assert.equal(request.sources[0].url,'https://example.org/source');
+  }
 });

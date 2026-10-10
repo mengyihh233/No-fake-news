@@ -19,6 +19,9 @@ Use the **local web app** with your own AI/search APIs, or install the **`tell-m
 | Optional judgment | Evidence only retains data, logic, and historical analysis; AI summary adds conditional judgments and explicit reasoning. |
 | Adjustable depth | Brief / standard / deep change actual research budgets, independently of the judgment option. |
 | Traceable evidence | Linked claims and sources, excerpts, lineage, charts and source tables, timelines, historical comparisons, unresolved questions. |
+| Exact quotations | Inspect original quotes, nearby context, extract positions, and fingerprints; textual presence is checked, semantic support remains open to review. |
+| Supplemental retrieval | Optional keyword/family gap checks trigger at most 1 / 2 / 2 extra searches, within existing source and time limits. |
+| Documents and tables | Text-based PDF, HTML tables, CSV, and TSV with bounded extraction and explicit truncation/access caveats. |
 | Resident sources | Save up to six websites/document URLs. Supplement broad research or restrict search to those domains. |
 | Authorized access | Session-only HTTP Basic credentials, Cookie, or Bearer token bound to an exact HTTPS origin. |
 | Portable reports | JSON import/export and standalone HTML export with eligible local screenshots embedded. |
@@ -94,7 +97,11 @@ Add a summary to an existing report without researching again; imported evidence
 | Standard | 4 / 12 / 8 | 3,000 characters | 180 s |
 | Deep | 8 / 24 / 12 | 4,500 characters | 360 s |
 
+The query column is the **initial** budget. Optional supplemental search is off by default and adds at most 1 / 2 / 2 queries respectively, with additional provider fees and unchanged source/time limits. It records initial keyword/family gaps, not a completeness or truth score.
+
 More depth may increase time and provider fees. Evidence standards are identical at every depth; inconclusive results are allowed. Capture attempts are limited to three public sources per investigation.
+
+New reports use schema `1.1`; existing `1.0` reports remain readable. Exact citations locate the stored extract, not a live webpage or PDF page. Source families use provisional domain, fingerprint, and duplicate-text grouping. PDF parsing is limited to 1.5 MB response bytes, six seconds, 512 MiB, and the first 12 pages, with no OCR. See [evidence quality and boundaries, in three languages](docs/EVIDENCE.md).
 
 ## Screenshots and offline reports
 
@@ -141,7 +148,7 @@ node --test tests/*.cjs
 
 GitHub Actions tests Python and browser data. Coverage includes mode isolation, citations, missing/negative chart values, injection defenses, credential isolation, source scope, and multilingual output. Provider responses are mocked; tests do not certify a particular paid account.
 
-Current boundaries: HTML/plain text retrieval, bounded research, no generic form login, complete PDF/audio/video extraction, streaming model output, native noncompatible model protocols, user authentication, or public deployment setup. Chart values must occur in cited excerpts; derived `count` calculations identify their entries. The web backend does not support other derived arithmetic yet. Grouping cannot detect every republication or conflict of interest. Inconsistency and historical analogy alone do not prove a present claim false. There is no calibrated “truth percentage.”
+Current boundaries: bounded HTML/plain text/text-based PDF/CSV/TSV extraction; no OCR, generic form login, complete PDF/audio/video extraction, streaming model output, native noncompatible model protocols, user authentication, or public deployment setup. Chart values must occur in cited quotations; derived `count` calculations identify their entries. The web backend does not support other derived arithmetic yet. Grouping cannot detect every republication or conflict of interest. Inconsistency and historical analogy alone do not prove a present claim false. There is no calibrated “truth percentage.”
 
 | Location | Purpose |
 | --- | --- |

@@ -9,7 +9,9 @@ import hashlib
 import html
 import json
 import math
+import re
 import sys
+from decimal import Decimal, InvalidOperation
 from pathlib import Path
 from urllib.parse import urlsplit
 
@@ -88,7 +90,7 @@ _MESSAGES = {
     "bad_language": ("language 只支持 zh-CN、en、ja。", "language must be zh-CN, en, or ja.", "language は zh-CN、en、ja のいずれかです。"),
     "bad_mode": ("mode 只支持 evidence-only、ai-summary。", "mode must be evidence-only or ai-summary.", "mode は evidence-only または ai-summary です。"),
     "bad_url": ("来源 URL 必须是无凭据的 http(s) 地址。", "Source URLs must be http(s) addresses without embedded credentials.", "情報源の URL は認証情報を含まない http(s) アドレスである必要があります。"),
-    "bad_schema": ("需要 schema_version=1.0 和 topic。", "schema_version=1.0 and topic are required.", "schema_version=1.0 と topic が必要です。"),
+    "bad_schema": ("需要 schema_version=1.0 或 1.1 和 topic。", "schema_version=1.0 or 1.1 and topic are required.", "schema_version=1.0 または 1.1 と topic が必要です。"),
     "bad_depth": ("depth 应为 brief、standard 或 deep。", "depth must be brief, standard, or deep.", "depth は brief、standard、deep のいずれかです。"),
     "duplicate_ids": ("命题及来源 ID 必须唯一。", "Claim and source IDs must be unique.", "主張と情報源の ID は一意である必要があります。"),
     "bad_ids": ("命题/来源 ID 应为 C1…/E1…。", "Claim/source IDs must use C1…/E1….", "主張・情報源の ID は C1…・E1… の形式にしてください。"),
@@ -130,6 +132,41 @@ _MESSAGES = {
     "preferred_note": ("网址仅表示用户指定范围；是否实际取得请查看来源档案。", "These URLs describe the user's preferred scope; consult source records for actual retrieval.", "URL はユーザーの指定範囲です。実際の取得状況は情報源の記録を確認してください。"),
     "bad_source_policy": ("来源策略无效或指定来源超过 6 个。", "Invalid source policy or more than six preferred sources.", "情報源の方針が無効、または指定情報源が 6 件を超えています。"),
     "summary_language": ("总结语言", "Summary language", "要約の言語"),
+    "exact_citations": ("精确原句引用（{count}）", "Exact quotations ({count})", "精確な原文引用（{count}）"),
+    "citation_note": ("原句仅与本材料包中的摘录逐字匹配；这不验证原网页真实性、统计解释或引文对论断的语义支持关系。", "Quotations match extracts in this package verbatim. This does not establish the original webpage's authenticity, statistical interpretation, or semantic support for a claim.", "引用文はこの資料の抜粋とそのまま一致します。元ページの真正性、統計の解釈、主張への意味的な裏付けは検証していません。"),
+    "citation_legacy": ("此条旧资料未提供精确引文定位。", "This legacy record has no exact quotation locator.", "この旧形式の記録には精確な引用位置がありません。"),
+    "citation_position": ("摘录字符位置 {start}–{end}（Unicode 码点，结束位置不包含）· 匹配 {count} 处，定位首处", "Extract character positions {start}–{end} (Unicode code points, end exclusive) · {count} matches, first occurrence selected", "抜粋の文字位置 {start}–{end}（Unicode コードポイント、終端を含まない）・{count} 件一致、最初の位置を選択"),
+    "citation_no_locator": ("原句存在于摘录；未提供定位元数据。", "The quote occurs in the extract; no locator metadata was supplied.", "引用文は抜粋内にありますが、位置メタデータは未提供です。"),
+    "bad_citation": ("精确引文缺失、引用无效，或原句、位置、上下文与摘录摘要不一致。", "An exact citation is missing, invalid, or inconsistent with the quotation, position, context, or extract hash.", "精確引用が不足・無効、または原文、位置、文脈、抜粋ハッシュと一致しません。"),
+    "bad_metadata": ("资料格式、来源谱系、摘要或检索缺口元数据无效。", "Invalid document format, source lineage, hash, or retrieval-gap metadata.", "資料形式、情報源系統、ハッシュ、検索の不足のメタデータが無効です。"),
+    "document_format": ("资料格式", "Document format", "資料形式"),
+    "format_unknown": ("未识别", "Unidentified", "未判定"),
+    "format_html": ("HTML 网页", "HTML webpage", "HTML ページ"),
+    "format_text": ("纯文本", "Plain text", "プレーンテキスト"),
+    "format_pdf": ("PDF 文档", "PDF document", "PDF 文書"),
+    "format_csv": ("CSV 表格", "CSV table", "CSV 表"),
+    "format_tsv": ("TSV 表格", "TSV table", "TSV 表"),
+    "family_method": ("归组方式", "Grouping method", "グループ化の方法"),
+    "family_domain": ("同一域名", "Same domain", "同一ドメイン"),
+    "family_exact_content": ("响应字节完全一致", "Identical response bytes", "応答バイトが完全一致"),
+    "family_exact_excerpt": ("摘录完全一致", "Identical extracts", "抜粋が完全一致"),
+    "family_near_duplicate": ("正文近似重复", "Near-duplicate text", "本文が近似一致"),
+    "family_note": ("来源归组是启发式提示，不证明转载关系、资料独立性或真实性。", "Lineage grouping is a heuristic hint, not proof of syndication, source independence, or truth.", "系統のグループ化は経験則による手掛かりです。転載関係、情報源の独立性、真実性の証明ではありません。"),
+    "content_hash": ("响应字节 SHA-256（声明值）", "Response-byte SHA-256 (declared)", "応答バイトの SHA-256（申告値）"),
+    "excerpt_hash": ("展示摘录 SHA-256", "Displayed-extract SHA-256", "表示抜粋の SHA-256"),
+    "hash_note": ("渲染器可复算包内摘录摘要；无法从包内文字核验原始响应字节摘要，也不重新访问来源。", "The renderer can recompute the packaged extract's hash. It cannot verify the original response-byte hash from extract text and does not revisit sources.", "レンダラーは資料内の抜粋ハッシュを再計算できますが、抜粋から元の応答バイトのハッシュを検証できず、情報源にも再アクセスしません。"),
+    "retrieval_gaps": ("检索缺口与补搜", "Retrieval gaps and follow-up searches", "検索の不足と追加検索"),
+    "gaps_note": ("这些是词项匹配和来源谱系数量的启发式缺口提示，不代表命题真假、资料独立性或完整覆盖。", "These heuristic gaps concern term matches and source-family counts. They do not establish truth, independence, or complete coverage.", "検索語の一致と情報源系統の件数に基づく経験則上の不足です。真偽、独立性、網羅性を示しません。"),
+    "gap_no_keyword_match": ("缺少词项匹配资料", "No matching source terms", "検索語が一致する資料なし"),
+    "gap_limited_families": ("来源谱系覆盖有限", "Limited source-family coverage", "情報源系統の範囲が限定的"),
+    "gap_attempted": ("已尝试补搜", "Follow-up search attempted", "追加検索を試行済み"),
+    "gap_not_attempted": ("未尝试补搜", "Follow-up search not attempted", "追加検索は未試行"),
+    "round_initial": ("初始检索", "Initial search", "初回検索"),
+    "round_supplemental": ("补充检索", "Follow-up search", "追加検索"),
+    "intent_neutral": ("中性资料", "Neutral sources", "中立的な資料"),
+    "intent_support": ("支持方向", "Supporting direction", "支持する方向"),
+    "intent_counter": ("反证方向", "Counter-evidence direction", "反証の方向"),
+    "intent_actor_history": ("主体历史", "Actor history", "当事者の履歴"),
 }
 LANGUAGES = ("zh-CN", "en", "ja")
 LOCALES = {language: {key: values[index] for key, values in _MESSAGES.items()} for index, language in enumerate(LANGUAGES)}
@@ -138,7 +175,8 @@ LOCALES = {language: {key: values[index] for key, values in _MESSAGES.items()} f
 def tr(language: str, key: str, **values) -> str:
     if language not in LOCALES:
         raise ValueError(LOCALES["en"]["bad_language"])
-    return LOCALES[language].get(key, key).format(**values)
+    template = LOCALES[language].get(key)
+    return template.format(**values) if template is not None else str(key)
 
 
 def report_language(report: dict, override: str | None = None) -> str:
@@ -150,18 +188,29 @@ def report_language(report: dict, override: str | None = None) -> str:
 
 PUBLIC_FIELDS = (
     "schema_version", "topic", "scope", "generated_at", "depth", "language", "source_policy", "preferred_sources", "limitations", "claims",
-    "evidence", "links", "timeline", "charts", "comparisons", "observations", "questions", "search_log",
+    "evidence", "links", "timeline", "charts", "comparisons", "observations", "questions", "search_log", "retrieval_gaps",
 )
 FIELDS = {
     "claims": ("id", "text", "kind"),
-    "evidence": ("id", "title", "url", "publisher", "published_at", "retrieved_at", "source_type", "content_kind", "excerpt", "context", "source_family", "status", "claim_ids", "screenshots"),
+    "evidence": ("id", "title", "url", "publisher", "published_at", "retrieved_at", "source_type", "content_kind", "excerpt", "context", "source_family", "status", "claim_ids", "screenshots", "excerpt_metadata", "document_format", "source_family_method", "source_family_evidence_ids", "content_sha256"),
     "links": ("from", "to", "relation", "note"),
-    "timeline": ("date", "title", "detail", "evidence_ids"),
+    "timeline": ("date", "title", "detail", "evidence_ids", "citations"),
     "charts": ("title", "unit", "kind", "points", "note"),
-    "comparisons": ("case", "date", "similarities", "differences", "limits", "evidence_ids"),
-    "observations": ("kind", "text", "claim_ids", "evidence_ids"),
-    "search_log": ("query", "intent", "provider", "result_count", "ran_at"),
+    "comparisons": ("case", "date", "similarities", "differences", "limits", "evidence_ids", "citations"),
+    "observations": ("kind", "text", "claim_ids", "evidence_ids", "citations"),
+    "search_log": ("query", "intent", "provider", "result_count", "ran_at", "round", "gap_claim_ids"),
+    "retrieval_gaps": ("claim_id", "reason", "query", "attempted"),
 }
+
+
+def project_citations(items):
+    result = []
+    for item in items:
+        citation = {key: copy.deepcopy(item[key]) for key in ("evidence_id", "quote", "locator", "verification", "semantic_support") if key in item}
+        if isinstance(citation.get("locator"), dict):
+            citation["locator"] = {key: value for key, value in citation["locator"].items() if key in ("start", "end", "prefix", "suffix", "excerpt_sha256", "match_count", "coordinate_system")}
+        result.append(citation)
+    return result
 
 
 def project_report(report: dict, mode: str) -> dict:
@@ -177,27 +226,35 @@ def project_report(report: dict, mode: str) -> dict:
     for field, keys in FIELDS.items():
         result[field] = [{key: obj[key] for key in keys if key in obj} for obj in result.get(field, [])]
     for chart in result["charts"]:
-        chart["points"] = [{key: p[key] for key in ("label", "value", "evidence_ids", "calculation") if key in p} for p in chart.get("points", [])]
+        chart["points"] = [{key: p[key] for key in ("label", "value", "evidence_ids", "calculation", "citations") if key in p} for p in chart.get("points", [])]
         for point in chart["points"]:
             if isinstance(point.get("calculation"), dict):
                 point["calculation"] = {k: v for k, v in point["calculation"].items() if k in ("operation", "source_quotes", "description")}
     for evidence in result["evidence"]:
         evidence["screenshots"] = [{key: s[key] for key in ("path", "url", "captured_at", "sha256", "source_url") if key in s} for s in evidence.get("screenshots", [])]
+        if isinstance(evidence.get("excerpt_metadata"), dict):
+            evidence["excerpt_metadata"] = {key: value for key, value in evidence["excerpt_metadata"].items() if key in ("sha256", "coordinate_system")}
     if mode == "ai-summary":
         if report.get("summary_language") is not None:
             result["summary_language"] = report_language(report, report["summary_language"])
         if not report.get("summary"):
             raise ValueError(tr(result["language"], "summary_required"))
-        result["summary"] = {k: copy.deepcopy(v) for k, v in report["summary"].items() if k in ("text", "verdict", "caveats", "evidence_ids")}
-        result["reasoning"] = [{k: copy.deepcopy(v) for k, v in row.items() if k in ("id", "premise_ids", "claim_id", "text", "kind")} for row in report.get("reasoning", [])]
+        result["summary"] = {k: copy.deepcopy(v) for k, v in report["summary"].items() if k in ("text", "verdict", "caveats", "evidence_ids", "citations")}
+        result["reasoning"] = [{k: copy.deepcopy(v) for k, v in row.items() if k in ("id", "premise_ids", "claim_id", "text", "kind", "citations")} for row in report.get("reasoning", [])]
         for projected, original in zip(result["claims"], report.get("claims", [])):
-            for key in ("verdict", "analysis"):
+            for key in ("verdict", "analysis", "citations"):
                 if key in original:
                     projected[key] = copy.deepcopy(original[key])
     else:
         for link in result["links"]:
             link["relation"] = "context" if link.get("relation") == "context" else "relevant_to"
             link["note"] = ""
+    cited_items = [*result["claims"], *result["timeline"], *result["comparisons"], *result["observations"],
+                   *result.get("reasoning", []), *([result["summary"]] if "summary" in result else []),
+                   *(point for chart in result["charts"] for point in chart["points"])]
+    for item in cited_items:
+        if "citations" in item:
+            item["citations"] = project_citations(item["citations"])
     return result
 
 
@@ -211,10 +268,56 @@ def safe_url(value: str, language: str = "zh-CN") -> str:
     return str(value)
 
 
+def numeric_values(text: str) -> set[Decimal]:
+    values = set()
+    for token in re.findall(r"(?<![\d.])[+-]?(?:\d{1,3}(?:,\d{3})+|\d+)(?:\.\d+)?(?!\d|\.\d)", text):
+        try:
+            values.add(Decimal(token.replace(",", "")))
+        except InvalidOperation:
+            pass
+    return values
+
+
+def validate_exact_citations(item: dict, evidence: dict, allowed: set, language: str,
+                             *, required: bool = False, maximum: int = 24) -> None:
+    quotes = item.get("citations", [])
+    if not isinstance(quotes, list) or len(quotes) > maximum or (required and not quotes):
+        raise ValueError(tr(language, "bad_citation"))
+    seen = set()
+    for citation in quotes:
+        eid, quote = citation.get("evidence_id"), citation.get("quote")
+        if eid not in allowed or eid not in evidence or not isinstance(quote, str) or not quote.strip() or len(quote) > 2000 or "[REDACTED CREDENTIAL]" in quote or (eid, quote) in seen:
+            raise ValueError(tr(language, "bad_citation"))
+        seen.add((eid, quote))
+        excerpt = evidence[eid].get("excerpt", "")
+        start = excerpt.find(quote)
+        if start < 0 or citation.get("semantic_support", "unverified") != "unverified" or citation.get("verification") not in (None, "exact_match"):
+            raise ValueError(tr(language, "bad_citation"))
+        locator = citation.get("locator")
+        if required and (not isinstance(locator, dict) or citation.get("verification") != "exact_match"):
+            raise ValueError(tr(language, "bad_citation"))
+        if citation.get("verification") == "exact_match" and locator is None:
+            raise ValueError(tr(language, "bad_citation"))
+        if locator is not None:
+            if not isinstance(locator, dict):
+                raise ValueError(tr(language, "bad_citation"))
+            end = start + len(quote)
+            count, cursor = 0, start
+            while cursor >= 0:
+                count += 1
+                cursor = excerpt.find(quote, cursor + 1)
+            expected = {"start": start, "end": end, "prefix": excerpt[max(0, start - 80):start],
+                        "suffix": excerpt[end:end + 80], "excerpt_sha256": hashlib.sha256(excerpt.encode("utf-8")).hexdigest(),
+                        "match_count": count, "coordinate_system": "unicode_codepoints"}
+            if any(isinstance(locator.get(key), bool) or not isinstance(locator.get(key), int) for key in ("start", "end", "match_count")) or any(locator.get(key, "unicode_codepoints" if key == "coordinate_system" else None) != value for key, value in expected.items()):
+                raise ValueError(tr(language, "bad_citation"))
+
+
 def validate(report: dict, language: str | None = None) -> None:
     language = report_language(report, language)
-    if report.get("schema_version") != "1.0" or not report.get("topic"):
+    if report.get("schema_version") not in ("1.0", "1.1") or not report.get("topic"):
         raise ValueError(tr(language, "bad_schema"))
+    strict_citations = report["schema_version"] == "1.1"
     if report.get("depth", "standard") not in ("brief", "standard", "deep"):
         raise ValueError(tr(language, "bad_depth"))
     if report.get("source_policy", "balanced") not in ("balanced", "preferred-only") or len(report.get("preferred_sources", [])) > 6:
@@ -230,6 +333,7 @@ def validate(report: dict, language: str | None = None) -> None:
     if any(not re.fullmatch(r"C[1-9]\d*", cid) for cid in claims) or any(not re.fullmatch(r"E[1-9]\d*", eid) for eid in evidence):
         raise ValueError(tr(language, "bad_ids"))
     known_claims, known_evidence = set(claims), set(evidence)
+    source_by_id = {item["id"]: item for item in report["evidence"]}
     def refs(items):
         if not items or any(i not in known_evidence for i in items):
             raise ValueError(tr(language, "missing_refs"))
@@ -237,15 +341,27 @@ def validate(report: dict, language: str | None = None) -> None:
         safe_url(item["url"], language)
         if any(cid not in known_claims for cid in item.get("claim_ids", [])):
             raise ValueError(tr(language, "bad_claim_ref"))
+        if item.get("document_format", "unknown") not in ("unknown", "html", "text", "pdf", "csv", "tsv") or item.get("source_family_method", "domain") not in ("domain", "exact_content", "exact_excerpt", "near_duplicate") or any(eid not in known_evidence for eid in item.get("source_family_evidence_ids", [])):
+            raise ValueError(tr(language, "bad_metadata"))
+        content_hash = item.get("content_sha256")
+        if content_hash is not None and (not isinstance(content_hash, str) or not re.fullmatch("[a-f0-9]{64}", content_hash)):
+            raise ValueError(tr(language, "bad_metadata"))
+        metadata = item.get("excerpt_metadata")
+        if metadata is not None and (not isinstance(metadata, dict) or metadata.get("sha256") != hashlib.sha256(item.get("excerpt", "").encode("utf-8")).hexdigest() or metadata.get("coordinate_system", "unicode_codepoints") != "unicode_codepoints"):
+            raise ValueError(tr(language, "bad_metadata"))
+    for claim in report["claims"]:
+        validate_exact_citations(claim, source_by_id, known_evidence, language, required=strict_citations and bool(claim.get("verdict") or claim.get("analysis")))
     for item in report["links"]:
         if item["from"] not in known_evidence or item["to"] not in known_claims:
             raise ValueError(tr(language, "bad_link"))
     for item in report["timeline"] + report["comparisons"]:
         refs(item.get("evidence_ids", []))
+        validate_exact_citations(item, source_by_id, set(item["evidence_ids"]), language, required=strict_citations)
     for item in report.get("observations", []):
         refs(item.get("evidence_ids", []))
         if item.get("kind") not in ("data", "logic", "history") or not item.get("claim_ids") or any(cid not in known_claims for cid in item["claim_ids"]):
             raise ValueError(tr(language, "bad_observation"))
+        validate_exact_citations(item, source_by_id, set(item["evidence_ids"]), language, required=strict_citations)
     for chart in report["charts"]:
         if chart.get("kind") not in ("bar", "line"):
             raise ValueError(tr(language, "bad_chart"))
@@ -255,18 +371,39 @@ def validate(report: dict, language: str | None = None) -> None:
                 raise ValueError(tr(language, "bad_value"))
             refs(point.get("evidence_ids", []))
             calculation = point.get("calculation")
+            required = strict_citations and value is not None and not (calculation and not calculation.get("source_quotes"))
+            validate_exact_citations(point, source_by_id, set(point["evidence_ids"]), language, required=required, maximum=100)
             if calculation is not None:
                 quotes = calculation.get("source_quotes", [])
                 excerpts = [e.get("excerpt", "") for e in report["evidence"] if e["id"] in point["evidence_ids"]]
-                if calculation.get("operation") != "count" or value != len(quotes) or len(quotes) != len(set(quotes)) or len(calculation.get("description", "")) < 10 or any(not q or not any(q in excerpt for excerpt in excerpts) for q in quotes):
+                if calculation.get("operation") != "count" or value is None or value != len(quotes) or len(quotes) != len(set(quotes)) or len(calculation.get("description", "")) < 10 or any(not q.strip() or "[REDACTED CREDENTIAL]" in q or not any(q in excerpt for excerpt in excerpts) for q in quotes):
                     raise ValueError(tr(language, "bad_count"))
+                if strict_citations and not all(any(citation["quote"] == quote for citation in point.get("citations", [])) for quote in quotes):
+                    raise ValueError(tr(language, "bad_citation"))
+            elif value is not None and (strict_citations or point.get("citations")):
+                quoted_numbers = set().union(*(numeric_values(citation["quote"]) for citation in point.get("citations", [])))
+                if Decimal(str(value)) not in quoted_numbers:
+                    raise ValueError(tr(language, "bad_citation"))
     premises = set(evidence)
+    premise_evidence = {eid: {eid} for eid in evidence}
     for step in report.get("reasoning", []):
         if not re.fullmatch(r"R[1-9]\d*", step["id"]) or step["id"] in premises or step.get("claim_id") not in known_claims or not step.get("premise_ids") or any(ref not in premises for ref in step["premise_ids"]):
             raise ValueError(tr(language, "bad_reasoning"))
+        allowed = set().union(*(premise_evidence[premise] for premise in step["premise_ids"]))
+        validate_exact_citations(step, source_by_id, allowed, language, required=strict_citations)
+        premise_evidence[step["id"]] = allowed
         premises.add(step["id"])
     if "summary" in report:
         refs(report["summary"].get("evidence_ids", []))
+        validate_exact_citations(report["summary"], source_by_id, set(report["summary"]["evidence_ids"]), language, required=strict_citations)
+    if len(report.get("retrieval_gaps", [])) > 12 or len(report.get("search_log", [])) > 10:
+        raise ValueError(tr(language, "bad_metadata"))
+    for gap in report.get("retrieval_gaps", []):
+        if gap.get("claim_id") not in known_claims or gap.get("reason") not in ("no_keyword_match", "limited_families") or not isinstance(gap.get("attempted"), bool) or not isinstance(gap.get("query"), str) or len(gap["query"]) > 600:
+            raise ValueError(tr(language, "bad_metadata"))
+    for search in report.get("search_log", []):
+        if search.get("round", "initial") not in ("initial", "supplemental") or any(cid not in known_claims for cid in search.get("gap_claim_ids", [])):
+            raise ValueError(tr(language, "bad_metadata"))
 
 
 def esc(value, language: str = "zh-CN") -> str:
@@ -277,6 +414,26 @@ def esc(value, language: str = "zh-CN") -> str:
 
 def citations(ids) -> str:
     return " ".join(f'<a class="ref" href="#{esc(i)}">{esc(i)}</a>' for i in ids)
+
+
+def exact_citations_html(item: dict, language: str, *, legacy: bool = False) -> str:
+    quotes = item.get("citations", [])
+    t = lambda key, **values: esc(tr(language, key, **values))
+    if not quotes:
+        return f'<p class="muted">{t("citation_legacy")}</p>' if legacy else ""
+    out = [f'<details class="exact-citations"><summary>{t("exact_citations", count=len(quotes))}</summary><p class="muted">{t("citation_note")}</p><ol>']
+    for citation in quotes:
+        locator = citation.get("locator")
+        prefix = locator.get("prefix", "") if locator else ""
+        suffix = locator.get("suffix", "") if locator else ""
+        out.append(f'<li>{citations([citation["evidence_id"]])}<blockquote><span class="quote-context">{esc(prefix)}</span><mark>{esc(citation["quote"])}</mark><span class="quote-context">{esc(suffix)}</span></blockquote>')
+        if locator:
+            out.append(f'<p class="muted">{t("citation_position", start=locator["start"], end=locator["end"], count=locator["match_count"])}<br>{t("excerpt_hash")}: <code>{esc(locator["excerpt_sha256"])}</code></p>')
+        else:
+            out.append(f'<p class="muted">{t("citation_no_locator")}</p>')
+        out.append('</li>')
+    out.append('</ol></details>')
+    return "".join(out)
 
 
 def chart_svg(chart: dict, language: str = "zh-CN") -> str:
@@ -380,8 +537,9 @@ def evidence_map(report: dict, language: str) -> str:
 
 def render(report: dict, root: Path, capture_dir: Path | None = None, language: str | None = None) -> str:
     language = report_language(report, language)
-    t = lambda key, **values: tr(language, key, **values)
+    t = lambda key, **values: esc(tr(language, key, **values))
     e = lambda value: esc(value, language)
+    exact = lambda item: exact_citations_html(item, language, legacy=report.get("schema_version") == "1.0")
     depth = t(report.get("depth", "standard"))
     out = [f'<!doctype html><html lang="{language}"><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>No fake news · {t("title")}</title><style>{STYLE}</style><body><main><header><p class="eyebrow">NO FAKE NEWS / {t("title")}</p><h1>{e(report["topic"])}</h1><p class="mode">{t(report["mode"])} · {t("depth")}: {depth}</p><p>{e(report.get("scope", ""))}</p><small>{t("generated")}: {e(report.get("generated_at"))}</small>']
     if language != report.get("language", "zh-CN"):
@@ -402,6 +560,7 @@ def render(report: dict, root: Path, capture_dir: Path | None = None, language: 
         out.append(f'<article id="{e(claim["id"])}"><h3>{e(claim["id"])} · {e(claim["text"])}</h3><p class="muted">{t("type")}: {t(kind)}</p>')
         if "analysis" in claim:
             out.append(f'<p>{e(claim.get("verdict", ""))} {e(claim["analysis"])}</p>')
+            out.append(exact(claim))
         for link in linked:
             out.append(f'<p>↳ {citations([link["from"]])} · {t(link["relation"])} {e(link.get("note", ""))}</p>')
         out.append('</article>')
@@ -409,6 +568,14 @@ def render(report: dict, root: Path, capture_dir: Path | None = None, language: 
     for evidence in report["evidence"]:
         status = "status_retrieved" if evidence.get("status") == "retrieved" else evidence.get("status", "unknown")
         out.append(f'<article id="{e(evidence["id"])}"><p class="eyebrow">{e(evidence["id"])} · {e(evidence.get("publisher"))}</p><h3><a href="{e(evidence["url"])}" rel="noopener noreferrer">{e(evidence["title"])}</a></h3><p class="muted">{t(evidence.get("source_type", "unknown"))} / {t(evidence.get("content_kind", "unknown"))} / {t(status)}<br>{t("published")}: {e(evidence.get("published_at"))} · {t("retrieved")}: {e(evidence.get("retrieved_at"))}<br>{t("family")}: {e(evidence.get("source_family"))}</p><blockquote>{e(evidence.get("excerpt", ""))}</blockquote><p>{e(evidence.get("context", ""))}</p><p>{t("claim_refs")} {citations(evidence.get("claim_ids", []))}</p>')
+        out.append(f'<p class="muted">{t("document_format")}: {t("format_" + evidence.get("document_format", "unknown"))}<br>{t("family_method")}: {t("family_" + evidence.get("source_family_method", "domain"))} {citations(evidence.get("source_family_evidence_ids", []))}<br>{t("family_note")}</p>')
+        if evidence.get("content_sha256") or evidence.get("excerpt_metadata"):
+            out.append('<details><summary>SHA-256</summary>')
+            if evidence.get("content_sha256"):
+                out.append(f'<p class="muted">{t("content_hash")}: <code>{e(evidence["content_sha256"])}</code></p>')
+            if evidence.get("excerpt_metadata"):
+                out.append(f'<p class="muted">{t("excerpt_hash")}: <code>{e(evidence["excerpt_metadata"]["sha256"])}</code></p>')
+            out.append(f'<p class="muted">{t("hash_note")}</p></details>')
         for shot in evidence.get("screenshots", []):
             out.append(screenshot_html(shot, root, capture_dir, language))
         out.append('</article>')
@@ -416,13 +583,13 @@ def render(report: dict, root: Path, capture_dir: Path | None = None, language: 
     if report.get("observations"):
         out.append(f'<section><h2>{t("observations")}</h2><p class="muted">{t("observations_note")}</p>')
         for index, item in enumerate(report["observations"]):
-            out.append(f'<article id="analysis-observation-{index}"><h3>{t(item["kind"])}</h3><p>{e(item["text"])}</p><p>{t("claim")} {citations(item["claim_ids"])} · {t("source")} {citations(item["evidence_ids"])}</p></article>')
+            out.append(f'<article id="analysis-observation-{index}"><h3>{t(item["kind"])}</h3><p>{e(item["text"])}</p><p>{t("claim")} {citations(item["claim_ids"])} · {t("source")} {citations(item["evidence_ids"])}</p>{exact(item)}</article>')
         out.append('</section>')
     if report["charts"]:
         out.append(f'<section><h2>03 / {t("charts")}</h2>')
         for chart in report["charts"]:
             out.append(f'<article><h3>{e(chart["title"])}</h3><p>{t("unit")}: {e(chart.get("unit", ""))}</p>{chart_svg(chart, language)}<table><thead><tr><th>{t("item")}</th><th>{t("value")}</th><th>{t("source")}</th></tr></thead><tbody>')
-            out.extend(f'<tr><td>{e(point["label"])}</td><td>{e(point.get("value"))}</td><td>{citations(point.get("evidence_ids", []))}</td></tr>' for point in chart["points"])
+            out.extend(f'<tr><td>{e(point["label"])}</td><td>{e(point.get("value"))}</td><td>{citations(point.get("evidence_ids", []))}{exact(point)}</td></tr>' for point in chart["points"])
             out.append(f'</tbody></table><p class="muted">{e(chart.get("note", ""))}</p>')
             for point in chart["points"]:
                 if point.get("calculation"):
@@ -432,7 +599,7 @@ def render(report: dict, root: Path, capture_dir: Path | None = None, language: 
         out.append('</section>')
     if report["timeline"]:
         out.append(f'<section><h2>04 / {t("timeline")}</h2><ol class="timeline">')
-        out.extend(f'<li><time>{e(item["date"])}</time><h3>{e(item["title"])}</h3><p>{e(item["detail"])}</p>{citations(item["evidence_ids"])}</li>' for item in report["timeline"])
+        out.extend(f'<li><time>{e(item["date"])}</time><h3>{e(item["title"])}</h3><p>{e(item["detail"])}</p>{citations(item["evidence_ids"])}{exact(item)}</li>' for item in report["timeline"])
         out.append('</ol></section>')
     if report["comparisons"]:
         out.append(f'<section><h2>05 / {t("comparisons")}</h2>')
@@ -440,24 +607,31 @@ def render(report: dict, root: Path, capture_dir: Path | None = None, language: 
             out.append(f'<article><h3>{e(comp["case"])}</h3><p>{e(comp.get("date"))} {citations(comp["evidence_ids"])}</p><dl>')
             for key, label in (("similarities", "similarities"), ("differences", "differences"), ("limits", "inference_limits")):
                 out.append(f'<dt>{t(label)}</dt><dd>{e(comp.get(key, ""))}</dd>')
-            out.append('</dl></article>')
+            out.append('</dl>' + exact(comp) + '</article>')
         out.append('</section>')
     if "summary" in report:
         summary = report["summary"]
         if report.get("summary_language"):
             out.append(f'<p class="muted">{t("summary_language")}: {e(report["summary_language"])}</p>')
-        out.append(f'<section><h2>06 / {t("summary")}</h2><article><h3>{e(summary.get("verdict"))}</h3><p>{e(summary["text"])}</p>{citations(summary["evidence_ids"])}<ul>' + "".join(f'<li>{e(text)}</li>' for text in summary.get("caveats", [])) + '</ul></article>')
+        out.append(f'<section><h2>06 / {t("summary")}</h2><article><h3>{e(summary.get("verdict"))}</h3><p>{e(summary["text"])}</p>{citations(summary["evidence_ids"])}<ul>' + "".join(f'<li>{e(text)}</li>' for text in summary.get("caveats", [])) + '</ul>' + exact(summary) + '</article>')
         for step in report.get("reasoning", []):
-            out.append(f'<article id="{e(step["id"])}"><h3>{e(step["id"])} → {citations([step["claim_id"]])}</h3><p>{t("premises")} {citations(step["premise_ids"])}</p><p>{e(step["text"])}</p></article>')
+            out.append(f'<article id="{e(step["id"])}"><h3>{e(step["id"])} → {citations([step["claim_id"]])}</h3><p>{t("premises")} {citations(step["premise_ids"])}</p><p>{e(step["text"])}</p>{exact(step)}</article>')
         out.append('</section>')
     out.append(f'<section><h2>{t("questions")}</h2><ul>' + "".join(f'<li>{e(text)}</li>' for text in report.get("questions", [])) + f'</ul></section><details><summary>{t("search_log")}</summary>')
-    out.extend(f'<p><strong>{e(item.get("query"))}</strong><br>{e(item.get("intent"))} · {e(item.get("provider"))} · {e(item.get("result_count"))} {t("results")} · {e(item.get("ran_at"))}</p>' for item in report["search_log"])
-    out.append(f'</details><footer>tell me truth · {t("footer")}</footer></main></body></html>')
+    out.extend(f'<p><strong>{e(item.get("query"))}</strong><br>{t("round_" + item.get("round", "initial"))} · {t("intent_" + item.get("intent", "neutral"))} · {e(item.get("provider"))} · {e(item.get("result_count"))} {t("results")} · {e(item.get("ran_at"))} {citations(item.get("gap_claim_ids", []))}</p>' for item in report["search_log"])
+    out.append('</details>')
+    if report.get("retrieval_gaps"):
+        out.append(f'<section><h2>{t("retrieval_gaps")}</h2><p class="muted">{t("gaps_note")}</p><ul>')
+        for gap in report["retrieval_gaps"]:
+            out.append(f'<li>{citations([gap["claim_id"]])} · {t("gap_" + gap["reason"])} · {t("gap_attempted" if gap["attempted"] else "gap_not_attempted")}<p>{e(gap["query"])}</p></li>')
+        out.append('</ul></section>')
+    out.append(f'<footer>tell me truth · {t("footer")}</footer></main></body></html>')
     return "".join(out)
 
 
 STYLE = """
 :root{color-scheme:light;font:16px/1.8 system-ui,'Microsoft YaHei',sans-serif;color:#23333b;background:#f4f3ed}*{box-sizing:border-box}body{margin:0}main{max-width:1000px;margin:auto;padding:56px 24px}header{padding-bottom:32px;border-bottom:2px solid #213b40}h1{font-size:clamp(28px,4vw,44px);line-height:1.35}h2{font-size:21px;margin-top:36px}h3{font-size:18px;margin:8px 0}a{color:#116f65;text-underline-offset:4px}.eyebrow{letter-spacing:2px;font-size:12px;color:#58716f}.mode,.ref{display:inline-block;background:#e4eeea;padding:2px 10px;border-radius:4px}.ref{font-size:13px;margin:2px}article,aside{padding:22px 26px;background:#fffdf8;border:1px solid #dedfd5;border-radius:8px;margin:16px 0;scroll-margin-top:20px}.muted,small,figcaption{color:#607176;font-size:13px;overflow-wrap:anywhere}blockquote{margin:20px 0;padding:8px 18px;border-left:3px solid #278375;background:#f3f6f2;white-space:pre-wrap}svg{width:100%;max-height:340px;overflow:visible}table{width:100%;border-collapse:collapse}td,th{border-bottom:1px solid #e3e6df;text-align:left;padding:10px}figure{margin:20px 0}img{max-width:100%;border:1px solid #ddd}.timeline{border-left:2px solid #7cae9e;padding-left:28px;list-style:none}.timeline li{padding-bottom:22px}time{font:13px ui-monospace,monospace;color:#287769}dt{font-weight:600}dd{margin-left:0}details,footer{padding:20px 0}footer{margin-top:30px;color:#657778;font-size:13px}@media print{main{padding:0}article{break-inside:avoid}details{display:block}}@media(max-width:600px){main{padding:24px 16px}article,aside{padding:18px}td,th{padding:6px;font-size:13px}}
+.exact-citations{padding:10px 0}.exact-citations summary{cursor:pointer;color:#176a62}.exact-citations ol{padding-left:24px}.exact-citations blockquote{font-size:14px;overflow-wrap:anywhere}.quote-context{color:#607176}mark{background:#fff0b2;color:#23333b}code{font:12px ui-monospace,monospace;overflow-wrap:anywhere}
 """
 
 

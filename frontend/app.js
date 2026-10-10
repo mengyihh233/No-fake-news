@@ -40,7 +40,7 @@
         return parsed.href;
       }
       const parsed = new URL(raw);
-      return ['https:', 'http:'].includes(parsed.protocol) ? parsed.href : null;
+      return ['https:', 'http:'].includes(parsed.protocol) && !parsed.username && !parsed.password ? parsed.href : null;
     } catch { return null; }
   }
 
@@ -77,6 +77,35 @@
     return result;
   }
 
+  function projectCitations(citations) {
+    return asArray(citations).map(citation => {
+      const item = pick(citation, ['evidence_id', 'quote', 'verification', 'semantic_support']);
+      if (citation.locator) item.locator = pick(citation.locator, ['start', 'end', 'prefix', 'suffix', 'excerpt_sha256', 'match_count', 'coordinate_system']);
+      return item;
+    });
+  }
+
+  function citedPick(item, fields) {
+    return { ...pick(item, fields), citations: projectCitations(item.citations) };
+  }
+
+  // Work in Unicode code points, matching the server rather than UTF-16 offsets.
+  function citationPosition(citation, source) {
+    if (!source || typeof citation?.quote !== 'string' || !citation.quote.trim()) return null;
+    const excerpt = source.excerpt || '';
+    const chars = Array.from(excerpt);
+    const quote = Array.from(citation.quote);
+    const starts = [];
+    let cursor = excerpt.indexOf(citation.quote);
+    while (cursor >= 0) { starts.push(Array.from(excerpt.slice(0, cursor)).length); cursor = excerpt.indexOf(citation.quote, cursor + 1); }
+    if (!starts.length) return null;
+    const start = starts[0], end = start + quote.length;
+    const position = { start, end, prefix: chars.slice(Math.max(0, start - 80), start).join(''), suffix: chars.slice(end, end + 80).join(''), match_count: starts.length };
+    const locator = citation.locator;
+    if (locator && (locator.start !== start || locator.end !== end || locator.prefix !== position.prefix || locator.suffix !== position.suffix || locator.match_count !== starts.length || locator.coordinate_system !== 'unicode_codepoints' || (source.excerpt_metadata && locator.excerpt_sha256 !== source.excerpt_metadata.sha256))) return null;
+    return position;
+  }
+
   // An allowlist is deliberate: changing the view also removes AI conclusions from the data.
   function evidenceProjection(report) {
     const projected = pick(report, ['schema_version', 'topic', 'depth', 'language', 'source_policy', 'generated_at', 'scope', 'limitations', 'questions']);
@@ -84,20 +113,22 @@
     projected.mode = 'evidence-only';
     projected.claims = asArray(report.claims).map((claim) => pick(claim, ['id', 'text', 'kind']));
     projected.evidence = asArray(report.evidence).map((source) => {
-      const item = pick(source, ['id', 'title', 'url', 'publisher', 'published_at', 'retrieved_at', 'source_type', 'content_kind', 'excerpt', 'context', 'source_family', 'status', 'claim_ids']);
+      const item = pick(source, ['id', 'title', 'url', 'publisher', 'published_at', 'retrieved_at', 'source_type', 'content_kind', 'document_format', 'content_sha256', 'excerpt', 'context', 'source_family', 'source_family_method', 'source_family_evidence_ids', 'status', 'claim_ids']);
+      if (source.excerpt_metadata) item.excerpt_metadata = pick(source.excerpt_metadata, ['sha256', 'coordinate_system']);
       item.screenshots = asArray(source.screenshots).map((capture) => pick(capture, ['url', 'captured_at', 'sha256', 'source_url']));
       return item;
     });
     projected.links = asArray(report.links).map((link) => ({ ...pick(link, ['from', 'to']), relation: link.relation === 'context' ? 'context' : 'relevant_to' }));
-    projected.timeline = asArray(report.timeline).map((item) => pick(item, ['date', 'title', 'detail', 'evidence_ids']));
+    projected.timeline = asArray(report.timeline).map((item) => citedPick(item, ['date', 'title', 'detail', 'evidence_ids']));
     projected.charts = asArray(report.charts).map((chart) => ({ ...pick(chart, ['title', 'unit', 'kind', 'note']), points: asArray(chart.points).map((point) => {
-      const item = pick(point, ['label', 'value', 'evidence_ids']);
+      const item = citedPick(point, ['label', 'value', 'evidence_ids']);
       if (point.calculation && typeof point.calculation === 'object') item.calculation = pick(point.calculation, ['operation', 'source_quotes', 'description']);
       return item;
     }) }));
-    projected.comparisons = asArray(report.comparisons).map((item) => pick(item, ['case', 'date', 'similarities', 'differences', 'limits', 'evidence_ids']));
-    projected.observations = asArray(report.observations).map((item) => pick(item, ['kind', 'text', 'claim_ids', 'evidence_ids']));
-    projected.search_log = asArray(report.search_log).map((item) => pick(item, ['query', 'intent', 'provider', 'result_count', 'ran_at']));
+    projected.comparisons = asArray(report.comparisons).map((item) => citedPick(item, ['case', 'date', 'similarities', 'differences', 'limits', 'evidence_ids']));
+    projected.observations = asArray(report.observations).map((item) => citedPick(item, ['kind', 'text', 'claim_ids', 'evidence_ids']));
+    projected.search_log = asArray(report.search_log).map((item) => pick(item, ['query', 'intent', 'provider', 'result_count', 'ran_at', 'round', 'gap_claim_ids']));
+    projected.retrieval_gaps = asArray(report.retrieval_gaps).map(item => pick(item, ['claim_id', 'reason', 'query', 'attempted']));
     return projected;
   }
 
@@ -133,7 +164,7 @@
 
   function saveSettings() {
     const ai = getAISettings();
-    const safeSettings = { base_url: ai.base_url, model: ai.model, search_provider: $('search-provider').value, depth: $('research-depth').value, include_screenshots: $('include-screenshots').checked };
+    const safeSettings = { base_url: ai.base_url, model: ai.model, search_provider: $('search-provider').value, depth: $('research-depth').value, include_screenshots: $('include-screenshots').checked, adaptive_search: $('adaptive-search').checked };
     try { localStorage.setItem(settingsKey, JSON.stringify(safeSettings)); } catch { /* The app also works when browser storage is disabled. */ }
     updateConnectionStatus();
   }
@@ -145,6 +176,7 @@
       if (typeof saved.model === 'string') $('ai-model').value = saved.model;
       if (['deepseek', 'tavily', 'brave'].includes(saved.search_provider)) $('search-provider').value = saved.search_provider;
       if (typeof saved.include_screenshots === 'boolean') $('include-screenshots').checked = saved.include_screenshots;
+      if (typeof saved.adaptive_search === 'boolean') $('adaptive-search').checked = saved.adaptive_search;
       if (['brief', 'standard', 'deep'].includes(saved.depth)) $('research-depth').value = saved.depth;
     } catch { /* Invalid old preferences are ignored; no keys are ever restored. */ }
     updateConnectionStatus();
@@ -266,7 +298,7 @@
     saveSettings();
     let sourceSettings;
     try { sourceSettings = Workspace.getSourceRequest(); } catch (error) { showError(error.message); return; }
-    const report = await requestJSON('/api/research', { method: 'POST', body: JSON.stringify({ topic, mode, depth, language: I18n.getLanguage(), ai, search, ...sourceSettings, include_screenshots: $('include-screenshots').checked }) }, 'research');
+    const report = await requestJSON('/api/research', { method: 'POST', body: JSON.stringify({ topic, mode, depth, language: I18n.getLanguage(), ai, search, ...sourceSettings, include_screenshots: $('include-screenshots').checked, adaptive_search: $('adaptive-search').checked }) }, 'research');
     if (report) installReport(report, mode, false);
   }
 
@@ -298,10 +330,10 @@
   }
 
   function normalizeImport(input) {
-    if (!input || typeof input !== 'object' || Array.isArray(input) || input.schema_version !== '1.0') throw new Error(t('errors.schema'));
+    if (!input || typeof input !== 'object' || Array.isArray(input) || !['1.0', '1.1'].includes(input.schema_version)) throw new Error(t('errors.schema'));
     const string = (value, fallback = '', max = 12000) => {
       if (value == null) return fallback;
-      if (typeof value !== 'string' || value.length > max) throw new Error(t('errors.import_text'));
+      if (typeof value !== 'string' || Array.from(value).length > max) throw new Error(t('errors.import_text'));
       return value;
     };
     const list = (value, map, max = 80) => {
@@ -327,8 +359,30 @@
       if (raw && !safeUrl(raw, capture)) throw new Error(t('errors.import_url'));
       return raw;
     };
+    const enumValue = (value, values, fallback) => {
+      if (value == null && fallback !== undefined) return fallback;
+      if (!values.includes(value)) throw new Error(t('errors.import_metadata'));
+      return value;
+    };
+    const hash = (value) => {
+      if (typeof value !== 'string' || !/^[a-f0-9]{64}$/.test(value)) throw new Error(t('errors.import_fingerprint'));
+      return value;
+    };
+    const citations = (value, max = 24) => list(value, raw => {
+      const citation = object(raw);
+      const item = { evidence_id: id(citation.evidence_id, 'E'), quote: string(citation.quote, '', 2000), semantic_support: enumValue(citation.semantic_support, ['unverified'], 'unverified') };
+      if (!item.quote.trim()) throw new Error(t('errors.import_citation'));
+      if (citation.verification != null) item.verification = enumValue(citation.verification, ['exact_match']);
+      if (citation.locator != null) {
+        const locator = object(citation.locator);
+        for (const key of ['start', 'end', 'match_count']) if (!Number.isInteger(locator[key]) || locator[key] < (key === 'start' ? 0 : 1) || locator[key] > 5000) throw new Error(t('errors.import_citation'));
+        item.locator = { start: locator.start, end: locator.end, prefix: string(locator.prefix, '', 80), suffix: string(locator.suffix, '', 80), excerpt_sha256: hash(locator.excerpt_sha256), match_count: locator.match_count, coordinate_system: enumValue(locator.coordinate_system, ['unicode_codepoints'], 'unicode_codepoints') };
+      }
+      if ((input.schema_version === '1.1' && (!item.locator || item.verification !== 'exact_match')) || (item.verification === 'exact_match' && !item.locator)) throw new Error(t('errors.import_citation'));
+      return item;
+    }, max);
     const report = {
-      schema_version: '1.0', topic: string(input.topic, '', 6000), mode: input.mode === 'ai-summary' ? 'ai-summary' : 'evidence-only',
+      schema_version: input.schema_version, topic: string(input.topic, '', 6000), mode: input.mode === 'ai-summary' ? 'ai-summary' : 'evidence-only',
       generated_at: string(input.generated_at), scope: string(input.scope, '', 4000), limitations: strings(input.limitations, 80), questions: strings(input.questions, 20)
     };
     if (!report.topic.trim()) throw new Error(t('errors.import_topic'));
@@ -346,7 +400,7 @@
     }
     report.claims = list(input.claims, (raw) => {
       const claim = object(raw);
-      const item = { id: id(claim.id, 'C'), text: string(claim.text, '', 1600), kind: string(claim.kind, 'fact', 100) };
+      const item = { id: id(claim.id, 'C'), text: string(claim.text, '', 1600), kind: string(claim.kind, 'fact', 100), citations: citations(claim.citations) };
       if (!item.text || !['fact', 'causal', 'prediction', 'value', 'mixed'].includes(item.kind)) throw new Error(t('errors.import_claim'));
       if (report.mode === 'ai-summary') { if (claim.verdict != null) item.verdict = string(claim.verdict); if (claim.analysis != null) item.analysis = string(claim.analysis); }
       return item;
@@ -358,6 +412,10 @@
         id: id(source.id, 'E'), title: string(source.title, '', 1000), url: url(source.url), publisher: string(source.publisher, '', 300), published_at: source.published_at == null ? null : string(source.published_at),
         retrieved_at: string(source.retrieved_at), source_type: string(source.source_type, 'unknown', 100), content_kind: string(source.content_kind, 'snippet', 100), excerpt: string(source.excerpt, '', 5000),
         context: string(source.context, '', 6000), source_family: string(source.source_family, '', 400), status: string(source.status, 'unavailable', 100), claim_ids: refs(source.claim_ids, 12),
+        document_format: enumValue(source.document_format, ['unknown', 'html', 'text', 'pdf', 'csv', 'tsv'], 'unknown'),
+        source_family_method: enumValue(source.source_family_method, ['domain', 'exact_content', 'exact_excerpt', 'near_duplicate'], 'domain'),
+        source_family_evidence_ids: refs(source.source_family_evidence_ids), content_sha256: source.content_sha256 == null ? null : hash(source.content_sha256),
+        excerpt_metadata: source.excerpt_metadata == null ? null : { sha256: hash(object(source.excerpt_metadata).sha256), coordinate_system: enumValue(source.excerpt_metadata.coordinate_system, ['unicode_codepoints'], 'unicode_codepoints') },
         screenshots: list(source.screenshots, (rawCapture) => {
           const capture = object(rawCapture);
           return { url: url(capture.url, true), captured_at: string(capture.captured_at), sha256: string(capture.sha256, '', 64), source_url: url(capture.source_url) };
@@ -372,7 +430,7 @@
     }, 120);
     report.timeline = list(input.timeline, (raw) => {
       const item = object(raw);
-      return { date: string(item.date), title: string(item.title), detail: string(item.detail), evidence_ids: refs(item.evidence_ids) };
+      return { date: string(item.date), title: string(item.title), detail: string(item.detail), evidence_ids: refs(item.evidence_ids), citations: citations(item.citations) };
     }, 30);
     report.charts = list(input.charts, (raw) => {
       const chart = object(raw);
@@ -380,7 +438,7 @@
       return { title: string(chart.title), unit: string(chart.unit), kind: chart.kind, note: string(chart.note), points: list(chart.points, (rawPoint) => {
         const point = object(rawPoint);
         if (point.value != null && (typeof point.value !== 'number' || !Number.isFinite(point.value))) throw new Error(t('errors.import_number'));
-        const item = { label: string(point.label), value: point.value ?? null, evidence_ids: refs(point.evidence_ids) };
+        const item = { label: string(point.label), value: point.value ?? null, evidence_ids: refs(point.evidence_ids), citations: citations(point.citations, 100) };
         if (point.calculation != null) {
           const calculation = object(point.calculation);
           item.calculation = { operation: string(calculation.operation), source_quotes: strings(calculation.source_quotes, 100), description: string(calculation.description) };
@@ -390,38 +448,55 @@
     }, 5);
     report.comparisons = list(input.comparisons, (raw) => {
       const item = object(raw);
-      return { case: string(item.case), date: string(item.date), similarities: string(item.similarities), differences: string(item.differences), limits: string(item.limits), evidence_ids: refs(item.evidence_ids) };
+      return { case: string(item.case), date: string(item.date), similarities: string(item.similarities), differences: string(item.differences), limits: string(item.limits), evidence_ids: refs(item.evidence_ids), citations: citations(item.citations) };
     }, 10);
     report.observations = list(input.observations, (raw) => {
       const item = object(raw);
       if (!['data', 'logic', 'history'].includes(item.kind)) throw new Error(t('errors.import_observation'));
-      const observation = { kind: item.kind, text: string(item.text, '', 5000), claim_ids: refs(item.claim_ids, 12), evidence_ids: refs(item.evidence_ids) };
+      const observation = { kind: item.kind, text: string(item.text, '', 5000), claim_ids: refs(item.claim_ids, 12), evidence_ids: refs(item.evidence_ids), citations: citations(item.citations) };
       if (!observation.text.trim() || !observation.claim_ids.length || !observation.evidence_ids.length) throw new Error(t('errors.import_premises'));
       return observation;
     }, 40);
     report.search_log = list(input.search_log, (raw) => {
       const query = object(raw);
-      if (query.result_count != null && (!Number.isInteger(query.result_count) || query.result_count < 0)) throw new Error(t('errors.import_count'));
-      return { query: string(query.query), intent: string(query.intent), provider: string(query.provider), result_count: query.result_count ?? 0, ran_at: string(query.ran_at) };
-    }, 8);
+      if (query.result_count != null && (!Number.isInteger(query.result_count) || query.result_count < 0 || query.result_count > 20)) throw new Error(t('errors.import_count'));
+      return { query: string(query.query, '', 600), intent: string(query.intent), provider: string(query.provider), result_count: query.result_count ?? 0, ran_at: string(query.ran_at), round: enumValue(query.round, ['initial', 'supplemental'], 'initial'), gap_claim_ids: refs(query.gap_claim_ids, 12) };
+    }, 10);
+    report.retrieval_gaps = list(input.retrieval_gaps, raw => {
+      const gap = object(raw);
+      if (typeof gap.attempted !== 'boolean') throw new Error(t('errors.import_metadata'));
+      return { claim_id: id(gap.claim_id, 'C'), reason: enumValue(gap.reason, ['no_keyword_match', 'limited_families']), query: string(gap.query, '', 600), attempted: gap.attempted };
+    }, 12);
     report.reasoning = report.mode === 'ai-summary' ? list(input.reasoning, (raw) => {
       const item = object(raw);
-      return { id: id(item.id, 'R'), premise_ids: refs(item.premise_ids, 48), claim_id: id(item.claim_id, 'C'), text: string(item.text), kind: string(item.kind) };
+      return { id: id(item.id, 'R'), premise_ids: refs(item.premise_ids, 48), claim_id: id(item.claim_id, 'C'), text: string(item.text), kind: string(item.kind), citations: citations(item.citations) };
     }, 30) : [];
     if (report.mode === 'ai-summary' && input.summary != null) {
       const summary = object(input.summary);
-      report.summary = { text: string(summary.text), verdict: string(summary.verdict), caveats: strings(summary.caveats, 20), evidence_ids: refs(summary.evidence_ids) };
+      report.summary = { text: string(summary.text), verdict: string(summary.verdict), caveats: strings(summary.caveats, 20), evidence_ids: refs(summary.evidence_ids), citations: citations(summary.citations) };
     }
     const claimIDs = new Set(report.claims.map((claim) => claim.id));
     const sourceIDs = new Set(report.evidence.map((source) => source.id));
     const reasoningIDs = new Set(report.reasoning.map((step) => step.id));
     if (claimIDs.size !== report.claims.length || sourceIDs.size !== report.evidence.length || reasoningIDs.size !== report.reasoning.length) throw new Error(t('errors.import_duplicates'));
     const check = (ids, allowed) => { if (asArray(ids).some((value) => !allowed.has(value))) throw new Error(t('errors.import_dangling')); };
-    report.evidence.forEach((source) => check(source.claim_ids, claimIDs));
+    report.evidence.forEach((source) => { check(source.claim_ids, claimIDs); check(source.source_family_evidence_ids, sourceIDs); });
     report.links.forEach((link) => { check([link.from], sourceIDs); check([link.to], claimIDs); });
     [...report.timeline, ...report.comparisons, ...report.observations, ...report.charts.flatMap((chart) => chart.points), ...(report.summary ? [report.summary] : [])].forEach((item) => check(item.evidence_ids, sourceIDs));
     report.observations.forEach((item) => check(item.claim_ids, claimIDs));
     report.reasoning.forEach((step) => { check(step.premise_ids, new Set([...sourceIDs, ...reasoningIDs])); check([step.claim_id], claimIDs); });
+    report.search_log.forEach(query => check(query.gap_claim_ids, claimIDs));
+    report.retrieval_gaps.forEach(gap => check([gap.claim_id], claimIDs));
+    const citedItems = [...report.claims, ...report.timeline, ...report.comparisons, ...report.observations, ...report.charts.flatMap(chart => chart.points), ...report.reasoning, ...(report.summary ? [report.summary] : [])];
+    citedItems.forEach(item => {
+      const seen = new Set();
+      item.citations.forEach(citation => {
+        const source = report.evidence.find(source => source.id === citation.evidence_id);
+        const key = JSON.stringify([citation.evidence_id, citation.quote]);
+        if (seen.has(key) || !citationPosition(citation, source) || (item.evidence_ids && !item.evidence_ids.includes(citation.evidence_id))) throw new Error(t('errors.import_citation'));
+        seen.add(key);
+      });
+    });
     return report.mode === 'evidence-only' ? evidenceProjection(report) : report;
   }
 
@@ -469,6 +544,49 @@
   }
 
   function sourceDomId(id) { return `source-${textValue(id).replace(/[^a-zA-Z0-9_-]/g, '_')}`; }
+
+  function renderCitations(citations) {
+    const items = asArray(citations);
+    if (!items.length) return el('p', 'citation-missing', t('citation.missing'));
+    const details = el('details', 'citation-details');
+    details.append(el('summary', '', t('citation.show', { count: items.length })), el('p', 'citation-disclosure', t('citation.disclosure')));
+    items.forEach(citation => {
+      const source = asArray(state.report?.evidence).find(source => source.id === citation.evidence_id);
+      const position = citationPosition(citation, source);
+      const item = el('div', 'citation-item');
+      const meta = el('div', 'citation-meta');
+      meta.append(sourceReferences([citation.evidence_id]), el('span', '', t(position ? 'citation.matched' : 'citation.unmatched')));
+      item.append(meta, el('blockquote', 'citation-quote', citation.quote));
+      if (position) {
+        const context = el('p', 'citation-context');
+        context.append(document.createTextNode(position.prefix), el('mark', '', citation.quote), document.createTextNode(position.suffix));
+        const contextDetails = el('details', 'citation-context-details');
+        contextDetails.append(el('summary', '', t('citation.context')), context);
+        item.append(contextDetails);
+        if (position.match_count > 1) item.append(el('p', 'citation-disclosure', t('citation.repeated', { count: position.match_count })));
+        const locate = actionButton(t('citation.locate'), () => focusCitation(citation), 'citation-locate');
+        locate.setAttribute('data-citation-source', citation.evidence_id);
+        item.append(locate);
+      }
+      if (source) item.append(externalLink(t('citation.original'), source.url, 'citation-original'));
+      details.append(item);
+    });
+    return details;
+  }
+
+  function focusCitation(citation) {
+    const source = asArray(state.report?.evidence).find(source => source.id === citation.evidence_id);
+    const position = citationPosition(citation, source);
+    if (!position) { toast(t('citation.unmatched')); return; }
+    focusSource(citation.evidence_id);
+    const excerpt = $(`${sourceDomId(citation.evidence_id)}-excerpt`);
+    if (!excerpt) return;
+    const chars = Array.from(source.excerpt);
+    excerpt.replaceChildren(document.createTextNode(chars.slice(0, position.start).join('')), el('mark', 'citation-highlight', citation.quote), document.createTextNode(chars.slice(position.end).join('')));
+    excerpt.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    excerpt.focus({ preventScroll: true });
+    toast(t('citation.located'));
+  }
 
   function focusSource(id) {
     const exists = asArray(state.report?.evidence).some((source) => source.id === id);
@@ -599,7 +717,9 @@
       }
       card.append(el('span', 'claim-id', claim.id), content);
       card.addEventListener('click', () => { state.filter = state.filter === claim.id ? null : claim.id; renderEvidenceArea(); });
-      grid.append(card);
+      const group = el('div', 'claim-group');
+      group.append(card, renderCitations(claim.citations));
+      grid.append(group);
     });
     if (claims.length) fragment.append(grid);
     else fragment.append(el('p', 'no-data', t('claim.no_claims')));
@@ -642,12 +762,21 @@
     return ({ fetched: t('source.read'), retrieved: t('source.read'), accessible: t('source.accessible'), available: t('source.accessible'), success: t('source.read'), ok: t('source.read'), blocked: t('source.blocked'), failed: t('source.failed'), inaccessible: t('source.unavailable'), unavailable: t('source.unavailable'), snippet_only: t('source.snippet_only'), not_fetched: t('source.not_read'), partial: t('source.partial') })[status] || textValue(status) || t('source.status_missing');
   }
 
+  function documentFormatLabel(format) {
+    return ['unknown', 'html', 'text', 'pdf', 'csv', 'tsv'].includes(format) ? t(`source.format_${format}`) : textValue(format);
+  }
+
+  function familyMethodLabel(method) {
+    return ['domain', 'exact_content', 'exact_excerpt', 'near_duplicate'].includes(method) ? t(`source.method_${method}`) : textValue(method);
+  }
+
   function renderSource(source) {
     const card = el('article', 'source-card', '', { id: sourceDomId(source.id), tabindex: '-1', 'aria-label': t('source.aria', { id: textValue(source.id), title: textValue(source.title) }) });
     const top = el('div', 'source-topline');
     const labels = el('div', 'source-labels');
     const snippet = /snippet|search_extract|摘要/i.test(textValue(source.content_kind));
     labels.append(el('span', 'evidence-id', source.id), el('span', 'source-type', sourceTypeLabel(source.source_type)), el('span', `content-badge${snippet ? ' snippet' : ''}`, contentKindLabel(source.content_kind)));
+    if (source.document_format && source.document_format !== 'unknown') labels.append(el('span', 'document-format', documentFormatLabel(source.document_format)));
     top.append(labels, el('span', 'source-status', statusLabel(source.status)));
     const title = el('h3', '');
     const link = externalLink(source.title || source.url || t('source.unnamed'), source.url);
@@ -656,7 +785,7 @@
     const meta = el('div', 'source-meta');
     meta.append(el('span', '', source.publisher || t('source.publisher_missing')), externalLink(hostLabel(source.url), source.url), el('span', '', t('source.published', { date: dateLabel(source.published_at) })), el('span', '', t('source.retrieved', { date: dateLabel(source.retrieved_at, true) })));
     card.append(top, title, meta);
-    if (source.excerpt) card.append(el('blockquote', '', source.excerpt));
+    if (source.excerpt) card.append(el('blockquote', 'source-excerpt', source.excerpt, { id: `${sourceDomId(source.id)}-excerpt`, tabindex: '-1', 'aria-label': t('citation.excerpt', { id: source.id }) }));
     else card.append(el('p', 'source-context', t('source.no_excerpt')));
     if (source.context) card.append(el('p', 'source-context', source.context));
     const bottom = el('div', 'source-bottom');
@@ -669,6 +798,15 @@
     });
     if (asArray(source.claim_ids).length) bottom.append(references);
     card.append(bottom);
+    const provenance = el('details', 'provenance-details');
+    provenance.append(el('summary', '', t('source.provenance')));
+    provenance.append(el('p', '', t('source.family_method', { method: familyMethodLabel(source.source_family_method || 'domain') })), el('p', 'citation-disclosure', t('source.family_heuristic')));
+    if (asArray(source.source_family_evidence_ids).length) { const related = el('p', '', t('source.family_related')); related.append(sourceReferences(source.source_family_evidence_ids)); provenance.append(related); }
+    provenance.append(el('p', '', t('source.format', { format: documentFormatLabel(source.document_format || 'unknown') })));
+    if (source.content_sha256) provenance.append(el('p', 'source-fingerprint', t('source.content_hash', { hash: source.content_sha256 })));
+    if (source.excerpt_metadata?.sha256) provenance.append(el('p', 'source-fingerprint', t('source.excerpt_hash', { hash: source.excerpt_metadata.sha256 })));
+    provenance.append(el('p', 'citation-disclosure', t(state.isImported ? 'source.import_fingerprint' : 'source.fingerprint_help')));
+    card.append(provenance);
     const captures = asArray(source.screenshots).filter((capture) => safeUrl(capture.url, true));
     if (captures.length) {
       const details = el('details', '');
@@ -701,6 +839,7 @@
     const refs = el('div', 'summary-evidence', t('summary.evidence'));
     refs.append(sourceReferences(summary.evidence_ids));
     if (asArray(summary.evidence_ids).length) section.append(refs);
+    section.append(renderCitations(summary.citations));
     if (asArray(summary.caveats).length) {
       const caveats = el('div', 'summary-caveats');
       const list = el('ul', '');
@@ -731,7 +870,7 @@
         }
       });
       if (step.claim_id) premises.append(document.createTextNode(t('reasoning.claim', { id: textValue(step.claim_id) })));
-      content.append(premises);
+      content.append(premises, renderCitations(step.citations));
       item.append(el('span', 'reasoning-id', step.id), content);
       list.append(item);
     });
@@ -769,7 +908,7 @@
         });
         footer.append(claims);
       }
-      card.append(footer);
+      card.append(footer, renderCitations(observation.citations));
       grid.append(card);
     });
     section.append(grid);
@@ -793,7 +932,7 @@
       timeline.forEach((event) => {
         const row = el('article', 'timeline-item');
         const content = el('div', '');
-        content.append(el('h3', '', event.title), el('p', '', event.detail), sourceReferences(event.evidence_ids, 'timeline-refs'));
+        content.append(el('h3', '', event.title), el('p', '', event.detail), sourceReferences(event.evidence_ids, 'timeline-refs'), renderCitations(event.citations));
         row.append(el('div', 'timeline-date', dateLabel(event.date)), content);
         list.append(row);
       });
@@ -840,7 +979,7 @@
     points.forEach((point) => {
       const row = el('tr', '');
       const refs = el('td', '');
-      refs.append(asArray(point.evidence_ids).length ? sourceReferences(point.evidence_ids) : el('span', '', t('chart.no_source')));
+      refs.append(asArray(point.evidence_ids).length ? sourceReferences(point.evidence_ids) : el('span', '', t('chart.no_source')), renderCitations(point.citations));
       row.append(el('td', '', point.label), el('td', '', typeof point.value === 'number' && Number.isFinite(point.value) ? point.value.toLocaleString(locale(), { maximumFractionDigits: 8 }) : t('common.missing')), refs);
       body.append(row);
     });
@@ -927,7 +1066,7 @@
     report.comparisons.forEach((item) => {
       const row = el('tr', '');
       const caseCell = el('td', '');
-      caseCell.append(el('strong', '', item.case), el('span', 'comparison-date', dateLabel(item.date)), sourceReferences(item.evidence_ids, 'comparison-refs'));
+      caseCell.append(el('strong', '', item.case), el('span', 'comparison-date', dateLabel(item.date)), sourceReferences(item.evidence_ids, 'comparison-refs'), renderCitations(item.citations));
       row.append(caseCell, el('td', '', item.similarities || t('common.not_provided')), el('td', '', item.differences || t('common.not_provided')), el('td', '', item.limits || t('common.not_provided')));
       body.append(row);
     });
@@ -962,17 +1101,30 @@
   function renderSearchLog(report) {
     const details = el('details', 'search-log');
     details.append(el('summary', '', t('search.title', { count: asArray(report.search_log).length })));
+    details.append(el('p', 'retrieval-disclosure', t('retrieval.disclosure')));
+    const gaps = el('div', 'retrieval-gaps');
+    gaps.append(el('h3', '', t('retrieval.title')));
+    if (!asArray(report.retrieval_gaps).length) gaps.append(el('p', '', t('retrieval.no_records')));
+    asArray(report.retrieval_gaps).forEach(gap => {
+      const item = el('article', 'retrieval-gap');
+      const claim = actionButton(gap.claim_id, () => focusClaim(gap.claim_id), 'source-ref claim-gap-ref');
+      claim.setAttribute('aria-label', t('claim.focus', { id: gap.claim_id }));
+      item.append(claim, el('span', '', ['no_keyword_match', 'limited_families'].includes(gap.reason) ? t(`retrieval.${gap.reason}`) : textValue(gap.reason)), el('span', 'retrieval-attempt', t(gap.attempted ? 'retrieval.attempted' : 'retrieval.not_attempted')));
+      if (gap.query) item.append(el('p', 'retrieval-query', gap.query));
+      gaps.append(item);
+    });
+    details.append(gaps);
     if (!asArray(report.search_log).length) { details.append(el('p', 'no-data', t('search.empty'))); return details; }
     const wrap = el('div', 'table-wrap');
     const table = el('table', '');
     const head = el('thead', '');
     const headings = el('tr', '');
-    [t('search.query'), t('search.intent'), t('search.provider'), t('search.count'), t('search.date')].forEach((title) => headings.append(el('th', '', title, { scope: 'col' })));
+    [t('search.query'), t('search.round'), t('search.gap_claims'), t('search.intent'), t('search.provider'), t('search.count'), t('search.date')].forEach((title) => headings.append(el('th', '', title, { scope: 'col' })));
     head.append(headings);
     const body = el('tbody', '');
     report.search_log.forEach((query) => {
       const row = el('tr', '');
-      row.append(el('td', '', query.query), el('td', '', intentLabel(query.intent)), el('td', '', query.provider), el('td', '', query.result_count ?? t('common.not_provided')), el('td', '', dateLabel(query.ran_at, true)));
+      row.append(el('td', '', query.query), el('td', '', t(query.round === 'supplemental' ? 'search.supplemental' : 'search.initial')), el('td', '', asArray(query.gap_claim_ids).join(', ') || '—'), el('td', '', intentLabel(query.intent)), el('td', '', query.provider), el('td', '', query.result_count ?? t('common.not_provided')), el('td', '', dateLabel(query.ran_at, true)));
       body.append(row);
     });
     table.append(head, body);
@@ -1090,7 +1242,11 @@
       snapshot.querySelectorAll('details').forEach((details) => { details.open = true; });
       snapshot.querySelectorAll('.filter-row').forEach((node) => node.remove());
       snapshot.querySelectorAll('button').forEach((node) => {
-        if (node.classList.contains('source-ref')) {
+        if (node.hasAttribute('data-citation-source')) {
+          node.replaceWith(el('a', node.className, node.textContent, { href: `#${sourceDomId(node.getAttribute('data-citation-source'))}-excerpt` }));
+        } else if (node.classList.contains('claim-gap-ref')) {
+          node.replaceWith(el('a', 'source-ref', node.textContent, { href: '#claims' }));
+        } else if (node.classList.contains('source-ref')) {
           const id = node.textContent;
           node.replaceWith(el('a', 'source-ref', id, { href: `#${sourceDomId(id)}` }));
         } else if (node.classList.contains('claim-card')) {
@@ -1129,6 +1285,7 @@
   $('close-settings').addEventListener('click', () => $('settings-dialog').close());
   $('settings-form').addEventListener('submit', (event) => { event.preventDefault(); saveSettings(); $('settings-dialog').close(); toast(t('common.settings_saved')); });
   $('include-screenshots').addEventListener('change', saveSettings);
+  $('adaptive-search').addEventListener('change', saveSettings);
   $('research-depth').addEventListener('change', saveSettings);
   $('ai-key').addEventListener('input', updateConnectionStatus);
   $('search-key').addEventListener('input', updateConnectionStatus);

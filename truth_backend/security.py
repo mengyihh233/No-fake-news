@@ -123,10 +123,13 @@ class Fetched:
 async def pinned_request(
     url: str, *, method: str = "GET", headers: dict | None = None, json_body: dict | None = None,
     allow_loopback: bool = False, redirects: int = 0, max_bytes: int = 1_500_000, timeout: float = 15,
+    known_secrets: list[str] | None = None,
 ) -> Fetched:
     """Connect to the validated IP, preserving Host and TLS SNI; never re-resolve it."""
     current = url
-    secrets = sensitive_header_values(headers)
+    # URL privacy applies to the entire research request, independently of which
+    # exact origin is permitted to receive the authentication headers.
+    secrets = sorted({value for value in [*sensitive_header_values(headers), *(known_secrets or [])] if value}, key=len, reverse=True)
     for step in range(redirects + 1):
         check_url_for_secrets(current, secrets)
         scheme, host, port, address = await resolve_public(current, allow_loopback=allow_loopback)

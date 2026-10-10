@@ -16,6 +16,34 @@ Shared `observations` contain cited, checkable statements such as “the denomin
 
 Depth changes coverage and detail, never evidence standards, judgment requirements, or uncalibrated certainty. All depths attempt support and counterevidence; deep research extends competing explanations, independence checks, and comparable cases. No depth guarantees complete coverage or absolute neutrality.
 
+## v0.2 exact quotations and locations
+
+New research uses `1.1` while retaining `1.0` compatibility. `citations` connect published analysis to source passages. A `quote` must occur verbatim in the displayed excerpt of its `evidence_id`, retaining language, whitespace, and newlines; translations, paraphrases, and whitespace normalization do not substitute for an original. The server regenerates and checks locators and SHA-256 against the excerpt, including submitted extracts in imported reports; it must not merely trust a verified marker.
+
+A locator's `[start, end)` uses Unicode codepoints, not UTF-16 offsets. Context is limited to 80 characters on each side; repeated quotes use the first occurrence and record `match_count`. `excerpt_metadata.sha256` and the locator's hash refer to displayed text. Positions locate the stored excerpt, not a live webpage DOM or PDF page. `verification=exact_match` establishes textual presence only; `semantic_support=unverified` leaves semantic support open to review. Real quotes can be irrelevant, cherry-picked, or factually wrong. Read surrounding context and check whether a passage supports the particular analysis and its scope.
+
+Imported extracts, positions, captures, and hashes do not authenticate a source or imply fresh network retrieval; adding judgment reuses material. If the host cannot read, compare verbatim text, or compute hashes, disclose the incomplete step without inventing tool output, locators, or verification status. Clearly identify legacy reports' missing exact quotations; ordinary source IDs are not verified passages.
+
+## v0.2 document and table extraction
+
+The Skill depends on tools actually available in its host. Reading webpages does not imply PDF, table, or OCR support. Without suitable capabilities, disclose unread material or extraction failure and retain URLs and unresolved checks. Record `document_format`; inspect headers, units, footnotes, row/column order, empty cells, and reading order. Disclose truncation and parsing limits; never fabricate page or cell locations.
+
+The following limits belong to the web app, not automatically to every Skill host. HTML, plain text, text-based PDF, CSV, and TSV responses are capped at 1,500,000 bytes, extraction at 16,000 characters, and displayed excerpts at the selected depth's smaller limit. PDF uses `pypdf` in a disposable subprocess with a six-second deadline, 512 MiB memory limit, first-12-page limit, and an 8 MB decoded content-stream check; parsing stops if resource guards cannot be applied. It receives document bytes without API keys or website authentication headers, does not save the PDF, execute scripts, unlock passwords, extract attachments, or provide OCR. Disclose missing text, font/reading-order problems, truncation, and failure. PDF tables are text extraction, not verified cell reconstruction.
+
+HTML/CSV/TSV tables preserve original row/column order, empty cells, and nearby headers as bounded tab-separated text, up to 500 rows and 100 columns; do not select favorable rows by keywords. An oversized first row can be cut with a warning; merged cells and other truncation also need caveats. Check original files and definitions before numeric comparison.
+
+## v0.2 optional supplemental search
+
+`adaptive_search=false` is the default, independent of judgment mode. Initial web searches still attempt neutral, supporting, counterevidence, and actor-history material. Enabling it adds at most 1 / 2 / 2 queries for brief / standard / deep, seeking original records and definitions without presuming a verdict. Extra calls can increase fees, including DeepSeek model/search calls. Source, claim, excerpt, and overall time limits stay unchanged. Reserve a few fetch slots for supplemental results and fill unused slots from cached initial results. Preferred URLs have priority; designated-domain restrictions apply to both rounds. Skip supplemental search with fewer than 45 seconds left or no source capacity.
+
+`retrieval_gaps` preserves an **initial-round snapshot**: claim keywords did not match displayed excerpts, or fewer than two source families matched. This deterministic heuristic can produce false positives or omissions; it does not score semantic coverage, completeness, or truth. `attempted` means a query was dispatched, not that it succeeded or resolved the gap. Successful queries record `round=initial|supplemental` and `gap_claim_ids` in `search_log`. Disclose failed supplemental calls separately and retain initial material; no recorded gaps does not imply exhaustive coverage.
+
+## v0.2 provisional source families
+
+The web app groups matching hostnames, identical response-byte hashes, normalized identical excerpts of at least 180 characters, and highly similar long extracts. Near-duplicate comparison uses five-token shingles, at least 500 characters and 60 distinct shingles per extract, with Jaccard similarity of at least 0.90. Short boilerplate alone does not merge domains. Grouping can be transitive; expose `source_family_method` (`domain`, `exact_content`, `exact_excerpt`, `near_duplicate`) and `source_family_evidence_ids`. If a host cannot run these comparisons, state its narrower method rather than invent similarity results.
+
+Families estimate possible dependence; they do not prove a common original source, authorship, ownership, independence, plagiarism, or truth. They can miss paraphrased reprints or group distinct reports using common material. `content_sha256` fingerprints retrieved response bytes; `excerpt_metadata.sha256` fingerprints displayed text. Neither is a publisher signature. Ignore tracking parameters only for candidate deduplication; retain recorded source URLs unchanged. Family counts do not replace substantive review of independent evidence gathering.
+
 ## Data
 
 Before comparing, check indicator definitions, denominators, units, geography, periods, samples, missingness, revisions, seasonality, nominal/real prices, and totals/per-capita measures. Bind formulas to inputs and sources: `(current-base)/base` is relative change, not a percentage-point difference. Ordinary relative change is undefined at a zero baseline.
@@ -58,3 +86,5 @@ These sources informed the methodology; business claims still require their own 
 - [ONS: Uncertainty and how we measure it](https://www.ons.gov.uk/methodology/methodologytopicsandstatisticalconcepts/uncertaintyandhowwemeasureit): uncertainty and measurement limits.
 - [C2PA Explainer §3.3](https://c2pa.org/specifications/specifications/1.4/explainer/Explainer.html): provenance and integrity are not factual truth.
 - [Psychology of Intelligence Analysis, PDF pages 65–67 and 73–74](https://www.cia.gov/resources/csi/static/Pyschology-of-Intelligence-Analysis.pdf): historical analogy and confirmation bias. The particular report schema is this project's design, not a standard prescribed by that source.
+
+A standalone Skill without deterministic locator computation uses `1.0` with original quotes and disclosed limitations. `1.1` requires complete, reproducible locator metadata; never guess it with a model.

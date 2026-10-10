@@ -14,6 +14,7 @@ from fastapi.responses import FileResponse, JSONResponse
 
 from truth_backend.captures import CAPTURE_DIR, screenshot_status
 from truth_backend.budgets import DEPTH_BUDGETS
+from truth_backend.deadlines import REQUEST_DEADLINE
 from truth_backend.models import Mode, Language, Report, ResearchRequest, SummarizeRequest
 from truth_backend.i18n import SUPPORTED_LANGUAGES, error_message
 from truth_backend.reports import public_report, validate_references
@@ -25,7 +26,7 @@ from truth_backend.models import SearchConfig
 
 
 ROOT = Path(__file__).resolve().parent
-app = FastAPI(title="No fake news", version="0.1.0", docs_url="/api/docs", redoc_url=None)
+app = FastAPI(title="No fake news", version="0.2.0", docs_url="/api/docs", redoc_url=None)
 busy = asyncio.Semaphore(2)
 
 
@@ -122,7 +123,7 @@ async def capture(name: str, request: Request):
 
 @app.get("/api/health")
 async def health(language: Language = "zh-CN"):
-    return {"status": "ok", "version": "0.1.0", "local_only": True,
+    return {"status": "ok", "version": "0.2.0", "local_only": True,
             "search_providers": ["deepseek", "tavily", "brave"], "ai_protocol": "openai-chat-completions",
             "default_search_provider": os.getenv("TRUTH_SEARCH_PROVIDER", "tavily") if os.getenv("TRUTH_SEARCH_PROVIDER", "tavily") in {"deepseek", "tavily", "brave"} else "tavily",
             "configured": {"ai_base_url": bool(os.getenv("TRUTH_AI_BASE_URL")),
@@ -134,16 +135,20 @@ async def health(language: Language = "zh-CN"):
             "source_access": {"preferred_urls": True, "policies": ["balanced", "preferred-only"],
                               "credential_kinds": ["basic", "cookie", "bearer"], "credentials_persisted": False,
                               "authenticated_screenshots": False, "form_login": False},
-            "max_sources": 24, "max_queries": 8, "depths": DEPTH_BUDGETS}
+            "max_sources": 24, "max_queries": 10, "depths": DEPTH_BUDGETS,
+            "report_schema": "1.1", "adaptive_search_default": False, "max_analysis_repair_calls": 1}
 
 
 async def bounded(operation, timeout_seconds=180):
+    token = REQUEST_DEADLINE.set(asyncio.get_running_loop().time() + timeout_seconds)
     try:
         async with asyncio.timeout(timeout_seconds):
             async with busy:
                 return await operation
     except TimeoutError:
         raise ServiceError("research_timeout", f"处理超过 {timeout_seconds} 秒；未返回不完整或替代报告，请稍后重试。", 504) from None
+    finally:
+        REQUEST_DEADLINE.reset(token)
 
 
 @app.post("/api/research")

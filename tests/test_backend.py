@@ -38,12 +38,12 @@ def sample_report(mode="ai-summary"):
 def analysis_data(mode="ai-summary"):
     return {
         "limitations": [], "evidence_annotations": [{"evidence_id": "E1", "claim_ids": ["C1"], "source_type": "primary", "context": "原始年报"}],
-        "claim_assessments": [{"claim_id": "C1", "verdict": "有记录支持", "analysis": "数值取自 E1。"}],
+        "claim_assessments": [{"claim_id": "C1", "verdict": "有记录支持", "analysis": "数值取自 E1。", "citations": [{"evidence_id": "E1", "quote": "2021 年总量为 20。"}]}],
         "links": [{"from": "E1", "to": "C1", "relation": "supports", "note": "数值吻合"}],
         "timeline": [], "charts": [{"title": "总量", "unit": "个", "kind": "bar", "points": [
             {"label": "2021", "value": 20, "evidence_ids": ["E1"], "source_quote": "2021 年总量为 20。"}], "note": "原始统计"}],
-        "comparisons": [], "reasoning": [{"id": "R1", "premise_ids": ["E1"], "claim_id": "C1", "text": "记录提供总量", "kind": "data"}],
-        "questions": [], "summary": {"text": "记录支持这一总量。", "verdict": "有记录支持", "caveats": [], "evidence_ids": ["E1"]},
+        "comparisons": [], "reasoning": [{"id": "R1", "premise_ids": ["E1"], "claim_id": "C1", "text": "记录提供总量", "kind": "data", "citations": [{"evidence_id": "E1", "quote": "2021 年总量为 20。"}]}],
+        "questions": [], "summary": {"text": "记录支持这一总量。", "verdict": "有记录支持", "caveats": [], "evidence_ids": ["E1"], "citations": [{"evidence_id": "E1", "quote": "2021 年总量为 20。"}]},
     }
 
 
@@ -304,7 +304,7 @@ def test_summarize_preserves_all_base_analysis_and_provides_it_to_model(client, 
         date="2021", title="年度记录", detail="E1 列出 2021 年度的记录。", evidence_ids=["E1"])]
     base = public_report(original)
     new_analysis = analysis_data()
-    new_analysis["observations"] = [{"kind": "logic", "text": "替换旧观察", "claim_ids": ["C1"], "evidence_ids": ["E1"]}]
+    new_analysis["observations"] = [{"kind": "logic", "text": "替换旧观察", "claim_ids": ["C1"], "evidence_ids": ["E1"], "citations": [{"evidence_id": "E1", "quote": "2021 年总量为 20。"}]}]
     new_analysis["timeline"] = []
     completion = AsyncMock(return_value=Analysis.model_validate(new_analysis))
     monkeypatch.setattr(research_module, "complete", completion)
@@ -332,7 +332,7 @@ def test_mocked_research_pipeline_returns_real_schema_and_strips_verdict(client,
                                                 "ai": {"model": "mock"}, "search": {"api_key": "secret-key"}})
     assert response.status_code == 200, response.text
     data = response.json()
-    assert data["schema_version"] == "1.0" and len(data["search_log"]) == 4
+    assert data["schema_version"] == "1.1" and len(data["search_log"]) == 4
     assert search.await_count == 4
     assert "summary" not in data and "reasoning" not in data
     assert "secret-key" not in response.text
@@ -346,7 +346,7 @@ def test_depth_executes_different_query_source_claim_and_excerpt_budgets(client,
     from truth_backend.models import Plan
     plan = Plan.model_validate({"claims": [{"text": f"原子论断 {i}", "kind": "fact"} for i in range(12)],
                                 "queries": [{"query": "弱模型仅提供一个查询", "intent": "neutral"}], "scope": "测试执行预算"})
-    analysis = Analysis.model_validate({"observations": [{"kind": "data", "text": "各条记录的口径仍需核查。", "claim_ids": ["C1"], "evidence_ids": ["E1"]}]})
+    analysis = Analysis.model_validate({"observations": [{"kind": "data", "text": "各条记录的口径仍需核查。", "claim_ids": ["C1"], "evidence_ids": ["E1"], "citations": [{"evidence_id": "E1", "quote": "2021 年总量为 20。"}]}]})
     completion = AsyncMock(side_effect=[plan, analysis])
     monkeypatch.setattr(research_module, "complete", completion)
     counter = 0
@@ -661,7 +661,7 @@ def test_preferred_sources_and_credentials_are_isolated_from_ai_search_and_repor
     password = "never-send-account-password"
     account_user = "never-send-account-username"
     plan = Plan.model_validate({"claims": [{"text": "A record exists.", "kind": "fact"}], "queries": [{"query": "record", "intent": "neutral"}], "scope": "Defined records only."})
-    analysis = Analysis.model_validate({"observations": [{"kind": "data", "text": "The record uses a stated reporting period.", "claim_ids": ["C1"], "evidence_ids": ["E1"]}]})
+    analysis = Analysis.model_validate({"observations": [{"kind": "data", "text": "The record uses a stated reporting period.", "claim_ids": ["C1"], "evidence_ids": ["E1"], "citations": [{"evidence_id": "E1", "quote": "A source record."}]}]})
     completion = AsyncMock(side_effect=[plan, analysis])
     monkeypatch.setattr(research_module, "complete", completion)
     search = AsyncMock(return_value=[{"url": "https://other.example.org/independent", "title": "Independent record", "snippet": "Public evidence"}])
